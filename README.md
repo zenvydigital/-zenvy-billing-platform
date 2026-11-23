@@ -1,11 +1,11 @@
 # Zenvy Digitals Billing Platform — standalone rebuild
 
 ABA therapy billing for US clinics. Node.js + Express + Postgres, deployed on
-Render at **app.zenvydigitals.online**. This is the standalone rebuild of the
+**Vercel (Hobby, serverless)** at **app.zenvydigitals.online**. This is the standalone rebuild of the
 Muse fullstack artifact `zenvy-digitals-billing-platform` (which cannot be
 exported or made public). Same features, same Zenvy navy + gold branding.
 
-**Status: Pass 4 (final) — all features built + verified (pass2 63 + pass3 70 + pass4 63 checks pass).** Auth,
+**Status: Pass 4 (final) + Pass 5 (Vercel adapter) — all features built + verified (pass2 63 + pass3 70 + pass4 63 checks pass).** Auth,
 clinics + flags, patients/referrals + BAA gate, verifications, authorizations
 + expiry scan, sessions → draft claims, claims + scrubber + submit gate,
 clearinghouse submit (simulation), denials, payer calls (opt-in enforced),
@@ -18,11 +18,14 @@ honestly), denial-risk score 0–100 with named factors, auto-appeal drafts
 (Aetna CO-97 + generic), Sara dialer bridge (queue CSV export + call-result
 import), Clinic Portal (own clinic only), audit-log DB trigger — see [PLAN.md](PLAN.md)
 for the build order and the verification log. Deploy-ready, pending only
-Rza's accounts (GitHub, Render, Supabase, Paddle verification).
+Rza's steps: Supabase SQL Editor migrations, Vercel import + env vars.
+(Render is BLOCKED — Rza's account is asked for a card at service creation;
+Koyeb free tier is dead since Feb 2026 and Zeabur's free hosted tier is gone.
+See DEPLOY.md.)
 
 ## Daily sweep (Pass 3)
 
-Render free has no cron jobs, so the daily sweep is an HTTP endpoint:
+Neither Render free nor Vercel runs the sweep natively, so the daily sweep is an HTTP endpoint:
 `POST /api/internal/run-daily` with header `x-cron-secret: <CRON_SECRET>`.
 Schedule it with a free external pinger (UptimeRobot / cron-job.org):
 automated checks sweep ~07:45 PKT, alert digest ~08:30 PKT — one call runs
@@ -64,13 +67,32 @@ npm start                   # → http://localhost:3000/health
 Without `DATABASE_URL` the server still starts and `/health` reports
 `db: "not-configured"`. With it set, migrations run automatically at startup.
 
-## Deploy (Render)
+## Deploy (Vercel Hobby — current route)
 
-1. Push this repo to GitHub.
-2. Render → New → Blueprint → connect the repo (`render.yaml`).
-3. In the Render dashboard set `DATABASE_URL` from the Supabase project.
-4. Custom domain: `app.zenvydigitals.online` → Render service (CNAME in
-   Cloudflare; Render provisions free SSL). Full steps in PLAN.md.
+1. Supabase SQL Editor → run `db/all-migrations.sql` once (see DEPLOY.md A1),
+   then verify the audit-log trigger.
+2. Vercel → Sign Up with GitHub → Add New → Project → Import this repo.
+3. In Vercel set `DATABASE_URL` (Supabase **session pooler** string),
+   `JWT_SECRET`, `NODE_ENV=production`, `APP_BASE_URL`, `CRON_SECRET`.
+4. Deploy → `https://<project>.vercel.app` → check `/health` (`db: "up"`).
+5. Custom domain: `app.zenvydigitals.online` → Vercel (CNAME in Cloudflare;
+   Vercel provisions free SSL). Full steps in PLAN.md §5b and DEPLOY.md.
+6. Daily sweep: external cron (cron-job.org, free) POSTs
+   `/api/internal/run-daily` with `x-cron-secret` — Vercel Cron is NOT used
+   (legacy cron is GET-only and cannot send the custom header).
+
+Vercel Hobby limits (verified Oct–Nov 2026): 300 s max function duration;
+2 GB / 1 vCPU; 1M invocations, 100 GB transfer, 4 h active CPU per month;
+cold starts after idle. **Hobby is for personal, non-commercial use
+(Vercel's terms)** — move to Pro ($20/seat/mo) once the first clinic pays.
+
+## Deploy (Render — BLOCKED)
+
+Render asks Rza's account for a card at service creation (account-level
+anti-fraud check) — Blueprint and direct Web Service alike. The app still
+supports it (`npm start`, `Dockerfile`, `render.yaml` untouched) if the card
+check is ever cleared; see DEPLOY.md Route B. Do NOT use Koyeb or Zeabur
+(both free tiers are dead since Feb 2026).
 
 ## Rules (never break)
 

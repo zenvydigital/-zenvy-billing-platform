@@ -184,6 +184,45 @@ pg-mem smoke test). Core tables:
    (Render provisions free SSL for the custom domain).
 8. Full test pass (Pass 4 list) on the live URL → then the 10 beta emails.
 
+## 5b. Vercel deploy steps (Hobby — current route, 2026-11-24)
+
+Render is BLOCKED (Rza's account is asked for a card at service creation —
+account-level anti-fraud check; our `render.yaml` is free-only, so no config
+can bypass it). Koyeb free tier is DEAD (Mistral acquisition, Feb 2026 —
+$29/mo for new accounts) and Zeabur's free hosted tier is gone (Feb 2026).
+Vercel Hobby is the $0, no-card route — serverless, so the app needed an
+adapter (Pass 5): `src/app.js` (shared Express app), `api/index.js`
+(serverless entry), `vercel.json` (rewrites `/api/*` + `/health` → the
+function; `public/` served statically), `db/all-migrations.sql` (001–005
+concatenated for the Supabase SQL Editor — serverless never migrates at
+startup; skipped when `VERCEL=1`).
+
+1. Supabase SQL Editor → paste `db/all-migrations.sql` → Run (tables, seeds,
+   Paddle columns, audit trigger) → verify the trigger (see DEPLOY.md A1.3).
+2. Supabase → Connect → Direct → **Session pooler** string (NOT Direct —
+   Direct is IPv6-only; Vercel functions need the IPv4 pooler).
+3. Vercel → Sign Up with GitHub → Add New → Project → Import
+   `zenvydigital/-zenvy-billing-platform` (Framework: Other, root `./`).
+4. Env vars: `DATABASE_URL` (pooler string), `JWT_SECRET` (long random,
+   typed by hand), `NODE_ENV=production`, `APP_BASE_URL` (Vercel URL first,
+   then `https://app.zenvydigitals.online` after the domain step),
+   `CRON_SECRET` (for the external daily sweep).
+5. Deploy → `GET /health` returns `{"ok":true,"db":"up"}`.
+6. Daily sweep: external cron (cron-job.org, free) POSTs
+   `/api/internal/run-daily` with `x-cron-secret` daily ~07:45 PKT.
+   Vercel Cron is NOT used (legacy cron is GET-only and cannot send the
+   custom header; Hobby cron is once/day max inside the hour, UTC).
+7. Cloudflare → CNAME `app` → `cname.vercel-dns.com` (as shown by Vercel);
+   Vercel provisions free SSL. Then update `APP_BASE_URL` + redeploy.
+8. Full test pass (Pass 4 list) on the live URL → then the 10 beta emails.
+
+Hobby limits (verified Oct–Nov 2026 from Vercel's own docs): 300 s max
+function duration (default + ceiling); 2 GB / 1 vCPU; 1M invocations,
+100 GB transfer, 4 h active CPU, 360 GB-hours provisioned memory per month;
+cold starts (a few seconds after idle). **Hobby is for personal,
+non-commercial use (Vercel's terms)** — Zenvy is commercial, so the honest
+path is Pro ($20/seat/mo) once the first clinic pays $500/mo.
+
 ## 6. Portability rules (Render → DigitalOcean, and anywhere else)
 
 - **Dockerfile is the deploy contract.** The same image runs on Render (Docker web
@@ -298,3 +337,61 @@ pg-mem smoke test). Core tables:
   browser run-through of the UI (no live browser in this session — the API
   behind every UI action is covered by the 63 checks, but clicks were not
   driven in a real browser).
+
+## 9. Verification log (Pass 5 — Vercel adapter — run 2026-11-24 ~00:40 PKT, Node 24)
+
+- [x] Vercel Hobby limits verified from Vercel's own docs (checked Oct–Nov 2026):
+  function max 300 s (default + ceiling on Hobby); 2 GB / 1 vCPU; 1M
+  invocations, 100 GB transfer, 4 h active CPU, 360 GB-hours provisioned
+  memory per month; legacy Cron Jobs on Hobby once/day max, fires anywhere
+  inside the hour, UTC only; Schedules (public beta, Nov 2026) every 15 min
+  on Hobby, 5,000 runs/billing period; Hobby is personal/non-commercial per
+  Vercel's terms.
+- [x] Refactor: `src/app.js` holds the Express app (verbatim move from
+  `src/index.js`); `src/index.js` is now only startup (migrate + listen) and
+  still `module.exports = app`, so `test/pass*.test.js` (which require
+  `../src/index`) are untouched. No route, business logic or test changed.
+- [x] `api/index.js` (CommonJS) exports the app as a Vercel function with a
+  defensive `/api/index` prefix strip; `vercel.json` rewrites `/api/*` and
+  `/health` → `/api/index`, `maxDuration: 300`; `public/` is served
+  statically by Vercel (filesystem precedence over rewrites).
+- [x] `db/all-migrations.sql` (001–005 concatenated, 20,836 bytes): every
+  non-comment line of the originals verified present verbatim; two
+  adjustments only — 002's two `ADD CONSTRAINT` wrapped in guarded DO blocks,
+  004's two `ADD COLUMN` use `IF NOT EXISTS` — plus `schema_migrations`
+  bookkeeping. Sections 001–004 + footer executed in pg-mem (run 1 OK, all 5
+  filenames recorded); re-run of the whole file fails in pg-mem ONLY on
+  `CREATE TABLE IF NOT EXISTS` for existing tables (emulator limit — real
+  Postgres treats it as a no-op). The DO blocks PARSE in pg-mem (reconstituted
+  exactly) but cannot execute there (no plpgsql) — standard Postgres, first
+  live run is the Supabase SQL Editor step.
+- [x] `npm run test:migrations` — **PASS** (5 migrations, 18 tables).
+- [x] `npm run test:pass2` — **PASS (63 checks, unchanged)**.
+- [x] `npm run test:pass3` — **PASS (70 checks, unchanged)**.
+- [x] `npm run test:pass4` — **PASS (63 checks, unchanged)**.
+- [x] `npm start` (no DATABASE_URL) serves the full UI: `/health` 0.4.0-pass4
+  (`db: "not-configured"`), `/` 200, `/app.js` 200, `/api/auth/me` 401,
+  `POST /api/internal/run-daily` 503 (no CRON_SECRET — honest).
+- [x] Serverless simulation (real HTTP server built from `api/index.js`,
+  `VERCEL=1`, no DATABASE_URL): `GET /health` 200 (`db: "not-configured"`),
+  `GET /api/auth/me` 401, `GET /api/unknown-route` 404 JSON,
+  `POST /api/internal/run-daily` 503 (no CRON_SECRET),
+  `GET /api/index/health` 200 (prefix strip works), `GET /` 200 (UI served).
+- [x] `VERCEL=1` startup skip verified: with a bogus DATABASE_URL the server
+  logs "Vercel serverless mode — startup migrations skipped" and starts
+  without attempting migrate (`/health` reports `db: "down"` honestly).
+- [x] `node --check` clean on `src/app.js`, `src/index.js`, `api/index.js`.
+- **Still unverified (honest):** no live Vercel deploy has run yet (Rza does
+  the import — the serverless path is verified locally only via the mock
+  harness); the audit trigger + the two guarded DO blocks in
+  `all-migrations.sql` have never run on real Postgres (first live run is the
+  Supabase SQL Editor step in DEPLOY.md); cold-start latency not measured;
+  Dockerfile build (no Docker on this VM); real Supabase Postgres (no live DB
+  yet — all tests are pg-mem); email delivery to a real inbox is NOT proven
+  (no Resend key); live Paddle charges (sandbox only); live browser
+  run-through of the UI; no live vendor connection (all simulation, by design).
+- **Deploy-ready state (Vercel):** adapter complete + verified locally.
+  Pending only Rza's steps: Supabase SQL Editor migrations + trigger check,
+  Vercel import + env vars + Deploy, external cron for the daily sweep,
+  `app.zenvydigitals.online` custom domain. Then: full test pass on the live
+  URL → 10 beta emails.

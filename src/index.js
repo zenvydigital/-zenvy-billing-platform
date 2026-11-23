@@ -1,101 +1,35 @@
 'use strict';
 
 /**
- * Zenvy Digitals Billing Platform — server entry (Pass 2: core features).
+ * Zenvy Digitals Billing Platform — long-running server entry
+ * (Render / Docker / local). `npm start` runs this file.
  *
- * Serves:
- *   GET /health   — liveness + DB status (used by Render's health check)
- *   GET /         — the app UI (public/index.html + public/app.js)
- *   /api/auth     — register / login / logout / me
- *   /api/clinics  — clinics, flags, dashboard, AR, reports, alerts, audit
- *   /api/clinics/:clinicId/* — patients, referrals, verifications,
- *     authorizations, sessions, claims, denials, payer calls, ERA, CSV
- *   /api/clinics/:clinicId/subscription — trial/active/pause/resume/cancel
- *   /api/clinics/:clinicId/alerts/send-digest + /alert-digests (Pass 3)
- *   /api/paddle/webhook — Paddle subscription events (Pass 3, raw body)
- *   /api/automation — the 5 automation rules + run history (Pass 3)
- *   /api/internal/run-daily — daily sweep for the external scheduler (Pass 3)
- *   /api/zenvy/costs — Costs & Model, Zenvy owner only (Pass 3)
- *   /api/demo     — demo data loader + one-click remove (owner only)
- *   /api/integrations — vendor connections + setConnectionMode (Pass 4)
- *   /api/clinics/:clinicId/edi/batches + /claims/:id/status-check (Pass 4)
- *   /api/clinics/:clinicId/appeal-drafts — auto-appeal drafts (Pass 4)
- *   /api/clinics/:clinicId/call-queue/export + /import-results — Sara dialer bridge (Pass 4)
- *   /api/portal   — per-clinic owner view (Pass 4)
- *   /api/clinics/:clinicId/claims/:id/risk — denial-risk score (Pass 4)
+ * The Express app itself lives in src/app.js (shared with the Vercel
+ * serverless entry api/index.js). This file only owns startup:
+ * migrations, then listen().
  *
  * Migrations run at startup when DATABASE_URL is set; a missing database
  * never blocks startup — /health simply reports db: "not-configured".
+ *
+ * Serverless (Vercel) NEVER runs migrations at startup: Vercel sets
+ * VERCEL=1, and start() skips migrate() there. On Vercel the migrations
+ * are applied once in the Supabase SQL Editor from db/all-migrations.sql
+ * (see DEPLOY.md). The app still works when migrations were applied
+ * externally — migrate() is idempotent, and on Vercel it is skipped
+ * entirely, so a missing schema_migrations table can never fail a request.
  */
 
-require('dotenv').config();
-const path = require('path');
-const express = require('express');
-const { ping } = require('./db');
+const app = require('./app');
 const { migrate } = require('./migrate');
 
-const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Paddle webhook first, with a RAW body parser — the signature is verified
-// against the exact request bytes, so the JSON parser must not run first.
-app.use('/api/paddle/webhook', express.raw({ type: 'application/json', limit: '2mb' }), require('./routes/paddle-webhook'));
-
-app.use(express.json({ limit: '2mb' }));
-app.use(express.static(path.join(__dirname, '..', 'public')));
-
-app.get('/health', async (req, res) => {
-  const db = await ping();
-  res.json({
-    ok: db !== 'down',
-    service: 'zenvy-billing-platform',
-    version: '0.4.0-pass4',
-    db,
-    time: new Date().toISOString(),
-  });
-});
-
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/demo', require('./routes/demo'));
-app.use('/api/automation', require('./routes/automation'));
-app.use('/api/internal', require('./routes/internal'));
-app.use('/api/zenvy', require('./routes/zenvy'));
-app.use('/api/integrations', require('./routes/integrations').platform);
-app.use('/api/portal', require('./routes/portal'));
-app.use('/api/clinics', require('./routes/clinics'));
-app.use('/api/clinics/:clinicId/subscription', require('./routes/subscriptions'));
-app.use('/api/clinics/:clinicId', require('./routes/patients'));
-app.use('/api/clinics/:clinicId', require('./routes/billing'));
-app.use('/api/clinics/:clinicId', require('./routes/era'));
-app.use('/api/clinics/:clinicId', require('./routes/csv'));
-app.use('/api/clinics/:clinicId', require('./routes/alerts'));
-app.use('/api/clinics/:clinicId', require('./routes/appeals'));
-app.use('/api/clinics/:clinicId', require('./routes/dialer'));
-app.use('/api/clinics/:clinicId', require('./routes/integrations').clinic);
-
-// Unknown API route — plain JSON, never an HTML page.
-app.use('/api', (req, res) => {
-  res.status(404).json({ ok: false, error: 'Unknown API route.' });
-});
-
-// Error handler: ApiError → its status + plain message; database constraint
-// failures → plain language (never raw SQL); everything else → 500.
-app.use((err, req, res, next) => {
-  if (err && err.status) {
-    return res.status(err.status).json({ ok: false, error: err.message });
-  }
-  if (err && err.code === '23505') {
-    return res.status(400).json({ ok: false, error: 'That record already exists — check for a duplicate and try again.' });
-  }
-  if (err && err.code === '23503') {
-    return res.status(409).json({ ok: false, error: 'That record is still linked to other records — remove the links first.' });
-  }
-  console.error('[error]', err && err.stack ? err.stack : err);
-  return res.status(500).json({ ok: false, error: 'Something went wrong on the server — please try again.' });
-});
-
 async function start() {
-  if (process.env.DATABASE_URL) {
+  if (process.env.VERCEL === '1') {
+    // Serverless: no startup migrations, no listen(). Migrations were
+    // applied once in the Supabase SQL Editor (db/all-migrations.sql).
+    console.log('[start] Vercel serverless mode — startup migrations skipped (applied via Supabase SQL Editor).');
+  } else if (process.env.DATABASE_URL) {
     try {
       await migrate();
     } catch (err) {
