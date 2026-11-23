@@ -37,9 +37,16 @@ A clinic with no account signs up from the website's Subscribe button:
 email, password (min 8 chars) and creates the clinic (status `trial`,
 trial_ends_at = today + 7 days, $500/month plan) + a clinic-scoped owner
 account (role `clinic`), then signs them in and lands them on the dashboard
-with the Quick-Start checklist and a one-click sample-data loader. One trial
+with the Quick-Start checklist and sample data already loaded (3 sample
+patients, 4 claims, 1 open denial — clearly marked SAMPLE DATA, removable in
+one click; the dashboard is never empty for a new trial). One trial
 per email; max 5 signup attempts/hour per IP. The hard BAA gate still blocks
-real patient entry until the clinic records its BAA. Trial owners see and
+real patient entry until the clinic records its BAA. Two emails are attempted
+on every signup (best-effort — the signup still returns 201 if email is not
+configured or fails): a welcome email to the clinic's work email and a
+notification to billing@zenvydigitals.online. Both need `RESEND_API_KEY` set
+in the environment (Vercel dashboard in production); without it the signup
+works but no email goes out, and the server log says so. Trial owners see and
 manage only their own clinic — never other clinics, Costs & Model, or
 platform administration. The logged-out screen is a split screen: product
 showcase on the left, sign-in on the right.

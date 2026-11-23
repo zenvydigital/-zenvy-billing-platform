@@ -15,6 +15,15 @@
  * ONE trial per email: an email that already has any account is
  * rejected with a plain message ("sign in instead").
  *
+ * Pass 5 follow-up #2: after a successful signup the clinic also gets
+ * sample data auto-loaded (same is_demo rows as the manual loader, so
+ * the dashboard is not empty) and two emails are attempted — a welcome
+ * email to the clinic and a notification to billing@zenvydigitals.online
+ * (see src/trial-emails.js). Both are best-effort: they never fail or
+ * delay the signup, and their real outcome is logged + reported in the
+ * 201 response (sampleDataLoaded, emailsSent). Without RESEND_API_KEY
+ * the emails are skipped and the signup still returns 201.
+ *
  * Anti-abuse (v1, simple): max 5 attempts per hour per IP, in-memory.
  * The client IP is the first X-Forwarded-For entry (Vercel sets it),
  * falling back to req.ip. Email format + password ≥ 8 chars are
@@ -29,6 +38,8 @@ const { query, getPool } = require('../db');
 const { ApiError, cleanRow } = require('../util');
 const { hashPassword, signToken, setSessionCookie } = require('../auth');
 const { audit } = require('../audit');
+const { loadClinicSampleData } = require('../sample-data');
+const { sendTrialEmails } = require('../trial-emails');
 
 const router = express.Router();
 
@@ -122,6 +133,49 @@ router.post('/start-trial', async (req, res, next) => {
       detail: { from: 'none', to: 'trial', trialDays: TRIAL_DAYS, priceMonthly: PRICE_MONTHLY, source: 'public-trial' },
     });
 
+    // Auto-load sample data into the new trial clinic (Pass 5 follow-up
+    // #2): a fresh clinic must not look empty — the scrubber, risk
+    // scores, appeals, ERA matching and AR aging are invisible until
+    // there is data. Same is_demo rows as the manual loader, removable
+    // in one click from the dashboard checklist; BAA untouched;
+    // real-patient gate still enforced. Best-effort: a failed load is
+    // logged and the signup still succeeds.
+    let sampleDataLoaded = false;
+    try {
+      const sclient = await pool.connect();
+      try {
+        await sclient.query('BEGIN');
+        await loadClinicSampleData((t, p) => sclient.query(t, p), clinic.id);
+        await sclient.query('COMMIT');
+        sampleDataLoaded = true;
+        console.log(`[trial] sample data loaded for clinic ${clinic.id}`);
+      } catch (err) {
+        await sclient.query('ROLLBACK');
+        console.error(`[trial] sample data load failed for clinic ${clinic.id}: ${err.message}`);
+      } finally {
+        sclient.release();
+      }
+    } catch (err) {
+      console.error(`[trial] sample data load failed for clinic ${clinic.id}: ${err.message}`);
+    }
+    if (sampleDataLoaded) {
+      try {
+        await audit(query, {
+          actor: user, clinicId: clinic.id, entity: 'demo', entityId: clinic.id,
+          action: 'load', detail: { clinic: clinicName, source: 'public-trial-auto' },
+        });
+      } catch (err) {
+        console.error(`[trial] audit of auto sample load failed for clinic ${clinic.id}: ${err.message}`);
+      }
+    }
+
+    // Trial emails (Pass 5 follow-up #2) — welcome to the clinic,
+    // notification to Zenvy. Best-effort, never fails the signup;
+    // outcomes are logged and reported honestly in the response.
+    const emailOutcomes = await sendTrialEmails({
+      clinic, user, trialEndsAt: endsAt, sampleDataLoaded,
+    });
+
     setSessionCookie(res, signToken(user));
     res.status(201).json({
       ok: true,
@@ -129,6 +183,11 @@ router.post('/start-trial', async (req, res, next) => {
       clinic: cleanRow(clinic, [], ['trial_ends_at']),
       trialEndsAt: endsAt,
       note: '7-day free trial started — no card required.',
+      sampleDataLoaded,
+      emailsSent: {
+        welcome: !!(emailOutcomes.welcome && emailOutcomes.welcome.delivered),
+        notify: !!(emailOutcomes.notify && emailOutcomes.notify.delivered),
+      },
     });
   } catch (err) {
     next(err);

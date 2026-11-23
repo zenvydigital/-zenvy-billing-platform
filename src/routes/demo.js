@@ -23,13 +23,10 @@ const { query, getPool } = require('../db');
 const { ApiError, isoDate } = require('../util');
 const { requireAuth, requireOwner, requireClinicOwner, loadClinic } = require('../middleware');
 const { audit } = require('../audit');
+const { loadClinicSampleData } = require('../sample-data');
 
 const router = express.Router();
 router.use(requireAuth, requireOwner);
-
-function daysFromNow(n) {
-  return new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
-}
 
 router.post('/load', async (req, res, next) => {
   try {
@@ -52,71 +49,7 @@ router.post('/load', async (req, res, next) => {
       )).rows[0];
       const cid = clinic.id;
 
-      const mkPatient = async (initials, payer, memberId) => (await q(
-        `INSERT INTO patients (clinic_id, initials, payer, member_id, is_demo) VALUES ($1, $2, $3, $4, TRUE) RETURNING *`,
-        [cid, initials, payer, memberId]
-      )).rows[0];
-      const lm = await mkPatient('L.M.', 'BCBS', 'M-1001');
-      const tk = await mkPatient('T.K.', 'Aetna', 'M-1002');
-      const ab = await mkPatient('A.B.', 'UHC', 'M-1003');
-
-      await q(`INSERT INTO verifications (clinic_id, patient_id, payer, status) VALUES ($1, $2, 'BCBS', 'eligible')`, [cid, lm.id]);
-      await q(`INSERT INTO verifications (clinic_id, patient_id, payer, status) VALUES ($1, $2, 'Aetna', 'pending')`, [cid, tk.id]);
-      await q(`INSERT INTO verifications (clinic_id, patient_id, payer, status) VALUES ($1, $2, 'UHC', 'eligible')`, [cid, ab.id]);
-
-      const auth1 = (await q(
-        `INSERT INTO authorizations (clinic_id, patient_id, auth_number, payer, cpt_codes, total_units, units_used, start_date, end_date)
-         VALUES ($1, $2, 'AUTH-DEMO-1', 'BCBS', '97153', 40, 8, $3, $4) RETURNING *`,
-        [cid, lm.id, daysFromNow(-60), daysFromNow(9)]
-      )).rows[0];
-      const auth2 = (await q(
-        `INSERT INTO authorizations (clinic_id, patient_id, auth_number, payer, cpt_codes, total_units, units_used, start_date, end_date)
-         VALUES ($1, $2, 'AUTH-DEMO-2', 'Aetna', '97153,97155', 20, 18, $3, $4) RETURNING *`,
-        [cid, tk.id, daysFromNow(-30), daysFromNow(60)]
-      )).rows[0];
-
-      const s1 = (await q(
-        `INSERT INTO sessions (clinic_id, patient_id, authorization_id, session_date, cpt_code, units, duration_min, status)
-         VALUES ($1, $2, $3, $4, '97153', 4, 60, 'completed') RETURNING *`,
-        [cid, lm.id, auth1.id, daysFromNow(-3)]
-      )).rows[0];
-      const s2 = (await q(
-        `INSERT INTO sessions (clinic_id, patient_id, authorization_id, session_date, cpt_code, units, duration_min, status)
-         VALUES ($1, $2, $3, $4, '97153', 4, 60, 'completed') RETURNING *`,
-        [cid, tk.id, auth2.id, daysFromNow(-4)]
-      )).rows[0];
-
-      // C1: clean claim — scrub passes.
-      const c1 = (await q(
-        `INSERT INTO claims (clinic_id, patient_id, authorization_id, session_id, date_of_service, cpt_code, units, billed_amount, is_demo)
-         VALUES ($1, $2, $3, $4, $5, '97153', 4, 240, TRUE) RETURNING *`,
-        [cid, lm.id, auth1.id, s1.id, daysFromNow(-3)]
-      )).rows[0];
-      // C2: problem claim — needs 8 units, only 2 left on AUTH-DEMO-2.
-      const c2 = (await q(
-        `INSERT INTO claims (clinic_id, patient_id, authorization_id, session_id, date_of_service, cpt_code, units, billed_amount, is_demo)
-         VALUES ($1, $2, $3, $4, $5, '97153', 8, 480, TRUE) RETURNING *`,
-        [cid, tk.id, auth2.id, s2.id, daysFromNow(-4)]
-      )).rows[0];
-      // C3: paid claim (recovered money on the dashboard).
-      await q(
-        `INSERT INTO claims (clinic_id, patient_id, authorization_id, date_of_service, cpt_code, units, billed_amount, paid_amount, status, scrub_status, is_demo)
-         VALUES ($1, $2, $3, $4, '97153', 4, 240, 240, 'paid', 'passed', TRUE)`,
-        [cid, lm.id, auth1.id, daysFromNow(-10)]
-      );
-      // C4: denied claim with an open denial + appeal deadline in 10 days.
-      const c4 = (await q(
-        `INSERT INTO claims (clinic_id, patient_id, date_of_service, cpt_code, units, billed_amount, status, scrub_status, is_demo)
-         VALUES ($1, $2, $3, '97155', 2, 160, 'denied', 'passed', TRUE) RETURNING *`,
-        [cid, ab.id, daysFromNow(-13)]
-      )).rows[0];
-      await q(
-        `INSERT INTO denials (clinic_id, claim_id, patient_id, denial_code, reason, status, appeal_deadline)
-         VALUES ($1, $2, $3, 'CO-97', 'The benefit for this service is included in the payment for another service already adjudicated.', 'open', $4)`,
-        [cid, c4.id, ab.id, daysFromNow(10)]
-      );
-      await q("UPDATE sessions SET claim_id = $1, status = 'billed' WHERE id = $2", [c1.id, s1.id]);
-      await q("UPDATE sessions SET claim_id = $1, status = 'billed' WHERE id = $2", [c2.id, s2.id]);
+      await loadClinicSampleData(q, cid);
 
       await client.query('COMMIT');
       await audit(query, { actor: req.user, clinicId: cid, entity: 'demo', entityId: cid, action: 'load', detail: { clinic: 'Demo Clinic — SAMPLE DATA' } });
@@ -218,67 +151,7 @@ clinicDemo.post('/load', async (req, res, next) => {
       await client.query('BEGIN');
       const q = (t, p) => client.query(t, p);
 
-      const mkPatient = async (initials, payer, memberId) => (await q(
-        `INSERT INTO patients (clinic_id, initials, payer, member_id, is_demo) VALUES ($1, $2, $3, $4, TRUE) RETURNING *`,
-        [cid, initials, payer, memberId]
-      )).rows[0];
-      const lm = await mkPatient('L.M.', 'BCBS', 'M-1001');
-      const tk = await mkPatient('T.K.', 'Aetna', 'M-1002');
-      const ab = await mkPatient('A.B.', 'UHC', 'M-1003');
-
-      await q(`INSERT INTO verifications (clinic_id, patient_id, payer, status) VALUES ($1, $2, 'BCBS', 'eligible')`, [cid, lm.id]);
-      await q(`INSERT INTO verifications (clinic_id, patient_id, payer, status) VALUES ($1, $2, 'Aetna', 'pending')`, [cid, tk.id]);
-      await q(`INSERT INTO verifications (clinic_id, patient_id, payer, status) VALUES ($1, $2, 'UHC', 'eligible')`, [cid, ab.id]);
-
-      const auth1 = (await q(
-        `INSERT INTO authorizations (clinic_id, patient_id, auth_number, payer, cpt_codes, total_units, units_used, start_date, end_date)
-         VALUES ($1, $2, 'AUTH-DEMO-1', 'BCBS', '97153', 40, 8, $3, $4) RETURNING *`,
-        [cid, lm.id, daysFromNow(-60), daysFromNow(9)]
-      )).rows[0];
-      const auth2 = (await q(
-        `INSERT INTO authorizations (clinic_id, patient_id, auth_number, payer, cpt_codes, total_units, units_used, start_date, end_date)
-         VALUES ($1, $2, 'AUTH-DEMO-2', 'Aetna', '97153,97155', 20, 18, $3, $4) RETURNING *`,
-        [cid, tk.id, daysFromNow(-30), daysFromNow(60)]
-      )).rows[0];
-
-      const s1 = (await q(
-        `INSERT INTO sessions (clinic_id, patient_id, authorization_id, session_date, cpt_code, units, duration_min, status)
-         VALUES ($1, $2, $3, $4, '97153', 4, 60, 'completed') RETURNING *`,
-        [cid, lm.id, auth1.id, daysFromNow(-3)]
-      )).rows[0];
-      const s2 = (await q(
-        `INSERT INTO sessions (clinic_id, patient_id, authorization_id, session_date, cpt_code, units, duration_min, status)
-         VALUES ($1, $2, $3, $4, '97153', 4, 60, 'completed') RETURNING *`,
-        [cid, tk.id, auth2.id, daysFromNow(-4)]
-      )).rows[0];
-
-      const c1 = (await q(
-        `INSERT INTO claims (clinic_id, patient_id, authorization_id, session_id, date_of_service, cpt_code, units, billed_amount, is_demo)
-         VALUES ($1, $2, $3, $4, $5, '97153', 4, 240, TRUE) RETURNING *`,
-        [cid, lm.id, auth1.id, s1.id, daysFromNow(-3)]
-      )).rows[0];
-      const c2 = (await q(
-        `INSERT INTO claims (clinic_id, patient_id, authorization_id, session_id, date_of_service, cpt_code, units, billed_amount, is_demo)
-         VALUES ($1, $2, $3, $4, $5, '97153', 8, 480, TRUE) RETURNING *`,
-        [cid, tk.id, auth2.id, s2.id, daysFromNow(-4)]
-      )).rows[0];
-      await q(
-        `INSERT INTO claims (clinic_id, patient_id, authorization_id, date_of_service, cpt_code, units, billed_amount, paid_amount, status, scrub_status, is_demo)
-         VALUES ($1, $2, $3, $4, '97153', 4, 240, 240, 'paid', 'passed', TRUE)`,
-        [cid, lm.id, auth1.id, daysFromNow(-10)]
-      );
-      const c4 = (await q(
-        `INSERT INTO claims (clinic_id, patient_id, date_of_service, cpt_code, units, billed_amount, status, scrub_status, is_demo)
-         VALUES ($1, $2, $3, '97155', 2, 160, 'denied', 'passed', TRUE) RETURNING *`,
-        [cid, ab.id, daysFromNow(-13)]
-      )).rows[0];
-      await q(
-        `INSERT INTO denials (clinic_id, claim_id, patient_id, denial_code, reason, status, appeal_deadline)
-         VALUES ($1, $2, $3, 'CO-97', 'The benefit for this service is included in the payment for another service already adjudicated.', 'open', $4)`,
-        [cid, c4.id, ab.id, daysFromNow(10)]
-      );
-      await q("UPDATE sessions SET claim_id = $1, status = 'billed' WHERE id = $2", [c1.id, s1.id]);
-      await q("UPDATE sessions SET claim_id = $1, status = 'billed' WHERE id = $2", [c2.id, s2.id]);
+      await loadClinicSampleData(q, cid);
 
       await client.query('COMMIT');
       await audit(query, { actor: req.user, clinicId: cid, entity: 'demo', entityId: cid, action: 'load', detail: { clinic: req.clinic.name, scope: 'own-clinic' } });

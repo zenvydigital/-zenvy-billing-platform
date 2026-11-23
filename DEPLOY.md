@@ -67,7 +67,11 @@ App is deploy-ready (Pass 4 + Vercel adapter, 199 checks pass). Deploy needs onl
      the external daily-sweep caller sends it as the `x-cron-secret` header
    - Leave `RESEND_API_KEY`, `PADDLE_*`, `TWILIO_*`, `DEEPGRAM_API_KEY`,
      `GEMINI_API_KEY` empty until those accounts/keys exist (app runs without
-     them; features show honest "not-configured" status).
+     them; features show honest "not-configured" status). Note: without
+     `RESEND_API_KEY` the trial signup still works, but no welcome email goes
+     to the clinic and no trial notification reaches Zenvy — set the key in
+     Vercel → Settings → Environment Variables (plain text, NOT a secret) for
+     the emails to actually send.
 5. **Deploy** → wait for the build → the app is live at
    `https://<your-project>.vercel.app`.
 6. Check `/health` on that URL — it must answer
@@ -108,8 +112,12 @@ designed (`POST /api/internal/run-daily`, header `x-cron-secret: <CRON_SECRET>`)
 7. **Public trial signup (Pass 5):** open `https://app.zenvydigitals.online/#trial`
    in a fresh browser (logged out) — the trial form must appear, not a bare login.
    Sign up with a test email → clinic created on a 7-day trial, signed in, dashboard
-   shows the Quick-Start checklist. One trial per email — a second signup with the
-   same email must be refused with a clear message.
+   shows the Quick-Start checklist AND sample data already loaded (3 sample
+   patients, 4 claims, $240 recovered, 1 open denial). One trial per email — a second signup with the
+   same email must be refused with a clear message. With `RESEND_API_KEY` set in
+   Vercel, the test inbox also gets the welcome email and billing@zenvydigitals.online
+   gets the new-trial notification; without the key the signup still works but no
+   email goes out (check the Vercel function log for the honest reason).
 8. Paddle: only after Rza's Paddle account is verified + domain `app.zenvydigitals.online`
    approved in Paddle → Website approval → set keys in Vercel env → test Subscribe flow
    in sandbox first, then live.

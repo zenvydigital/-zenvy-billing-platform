@@ -89,7 +89,13 @@ router.patch('/:clinicId', loadClinic, requireWrite, async (req, res, next) => {
   }
 });
 
-/** Delete a clinic — only when it holds no billing data (plain message otherwise). */
+/** Delete a clinic — only when it holds no REAL billing data (plain message otherwise).
+ * Sample (is_demo) rows never block a delete: a trial clinic whose only data is the
+ * auto-loaded sample set deletes cleanly, and its sample rows are purged with it.
+ * Real rows are identified through the is_demo flag where the table has one
+ * (patients, claims, referrals) and through their sample patient/claim otherwise
+ * (sessions, authorizations, verifications hang off the patient; denials off the
+ * claim). ERA lines are never sample data, so any ERA line blocks. */
 router.delete('/:clinicId', loadClinic, requirePlatformOwner, async (req, res, next) => {
   try {
     if (req.user.clinic_id !== null) {
@@ -97,19 +103,37 @@ router.delete('/:clinicId', loadClinic, requirePlatformOwner, async (req, res, n
     }
     const cid = req.clinic.id;
     const counts = {};
-    for (const [label, table] of [
-      ['referrals', 'referrals'], ['patients', 'patients'], ['claims', 'claims'],
-      ['sessions', 'sessions'], ['authorizations', 'authorizations'], ['denials', 'denials'],
-      ['ERA lines', 'era_lines'],
-    ]) {
-      const r = await query(`SELECT count(*)::int AS n FROM ${table} WHERE clinic_id = $1`, [cid]);
+    const countSql = async (label, sql) => {
+      const r = await query(sql, [cid]);
       if (r.rows[0].n > 0) counts[label] = r.rows[0].n;
-    }
+    };
+    await countSql('referrals', `SELECT count(*)::int AS n FROM referrals WHERE clinic_id = $1 AND is_demo IS NOT TRUE`);
+    await countSql('patients', `SELECT count(*)::int AS n FROM patients WHERE clinic_id = $1 AND is_demo IS NOT TRUE`);
+    await countSql('claims', `SELECT count(*)::int AS n FROM claims WHERE clinic_id = $1 AND is_demo IS NOT TRUE`);
+    await countSql('sessions', `SELECT count(*)::int AS n FROM sessions WHERE clinic_id = $1 AND patient_id NOT IN (SELECT id FROM patients WHERE clinic_id = $1 AND is_demo = TRUE)`);
+    await countSql('authorizations', `SELECT count(*)::int AS n FROM authorizations WHERE clinic_id = $1 AND patient_id NOT IN (SELECT id FROM patients WHERE clinic_id = $1 AND is_demo = TRUE)`);
+    await countSql('verifications', `SELECT count(*)::int AS n FROM verifications WHERE clinic_id = $1 AND patient_id NOT IN (SELECT id FROM patients WHERE clinic_id = $1 AND is_demo = TRUE)`);
+    await countSql('denials', `SELECT count(*)::int AS n FROM denials WHERE clinic_id = $1 AND patient_id NOT IN (SELECT id FROM patients WHERE clinic_id = $1 AND is_demo = TRUE) AND claim_id NOT IN (SELECT id FROM claims WHERE clinic_id = $1 AND is_demo = TRUE)`);
+    await countSql('ERA lines', `SELECT count(*)::int AS n FROM era_lines WHERE clinic_id = $1`);
     if (Object.keys(counts).length > 0) {
       const list = Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(', ');
       throw new ApiError(409, `This clinic still holds data (${list}). Remove or move that data first — clinics with billing records cannot be deleted.`);
     }
-    // No billing data: remove its users too (they belong to this clinic).
+    // No real billing data: purge any sample rows (dependency order), then its
+    // users and the clinic itself.
+    for (const sql of [
+      `DELETE FROM payer_calls WHERE clinic_id = $1`,
+      `DELETE FROM payer_call_queue WHERE clinic_id = $1`,
+      `DELETE FROM appeal_drafts WHERE claim_id IN (SELECT id FROM claims WHERE clinic_id = $1)`,
+      `DELETE FROM era_lines WHERE clinic_id = $1`,
+      `DELETE FROM denials WHERE clinic_id = $1`,
+      `DELETE FROM claims WHERE clinic_id = $1`,
+      `DELETE FROM sessions WHERE clinic_id = $1`,
+      `DELETE FROM authorizations WHERE clinic_id = $1`,
+      `DELETE FROM verifications WHERE clinic_id = $1`,
+      `DELETE FROM referrals WHERE clinic_id = $1`,
+      `DELETE FROM patients WHERE clinic_id = $1`,
+    ]) await query(sql, [cid]);
     await query('DELETE FROM users WHERE clinic_id = $1', [cid]);
     await query('DELETE FROM clinics WHERE id = $1', [cid]);
     await audit(query, { actor: req.user, clinicId: null, entity: 'clinic', entityId: cid, action: 'delete', detail: { name: req.clinic.name } });

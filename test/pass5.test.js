@@ -145,7 +145,7 @@ async function main() {
   r = await req('POST', '/api/demo/load', {}, trialCookie);
   check('scoped user cannot use the platform demo loader', r.status === 403);
   r = await req('GET', `/api/clinics/${trialClinicId}/dashboard`, undefined, trialCookie);
-  check('scoped user CAN read their own dashboard', r.status === 200 && r.json.dashboard.activePatients === 0);
+  check('scoped user CAN read their own dashboard (sample data auto-loaded: 3 patients, $240 recovered)', r.status === 200 && r.json.dashboard.activePatients === 3 && r.json.dashboard.hasSampleData === true && r.json.dashboard.recoveredThisMonth === 240);
   r = await req('GET', `/api/clinics/${trialClinicId}/dashboard`, undefined, ownerCookie);
   check('platform owner still reads any dashboard', r.status === 200);
 
@@ -167,7 +167,7 @@ async function main() {
 
   // --- clinic-scoped sample data --------------------------------------
   r = await req('POST', `/api/clinics/${trialClinicId}/demo/load`, {}, trialCookie);
-  check('sample data loads into the trial clinic', r.status === 201 && r.json.demo.clinicId === trialClinicId);
+  check('sample data already auto-loaded at signup (manual load refused)', r.status === 409);
   r = await req('GET', `/api/clinics/${trialClinicId}/dashboard`, undefined, trialCookie);
   check('sample data shows on the dashboard (recovered $240)', r.status === 200 && r.json.dashboard.hasSampleData === true && r.json.dashboard.recoveredThisMonth === 240);
   r = await req('POST', `/api/clinics/${trialClinicId}/demo/load`, {}, trialCookie);
