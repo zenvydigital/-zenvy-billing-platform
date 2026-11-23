@@ -1,6 +1,8 @@
 # Deploy runbook — Zenvy Digitals Billing Platform
 
-App is deploy-ready (Pass 4 + Vercel adapter, 196 checks pass). Deploy needs only Rza's accounts.
+App is deploy-ready (Pass 4 + Vercel adapter, 199 checks pass). Deploy needs only Rza's accounts.
+
+> 2026-11-24: bootstrap-register bug fixed — POST /api/auth/register now sets the session cookie for the first (owner) account, so the first-run setup screen signs the owner in instead of 401ing on /api/auth/me (commit on main; Vercel auto-redeploys).
 
 ## 0. Prereqs (Rza, all free)
 - GitHub account + repo `zenvydigital/-zenvy-billing-platform` (code already pushed, 55 files, branch `main`)

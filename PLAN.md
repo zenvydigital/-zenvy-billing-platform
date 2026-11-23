@@ -223,6 +223,8 @@ cold starts (a few seconds after idle). **Hobby is for personal,
 non-commercial use (Vercel's terms)** — Zenvy is commercial, so the honest
 path is Pro ($20/seat/mo) once the first clinic pays $500/mo.
 
+> 2026-11-24: bootstrap-register fix — POST /api/auth/register now sets the session cookie when the first (owner) account is created, so first-run setup signs the owner in; non-bootstrap registers never touch the caller's session. Covered by 3 new pass2 checks (66 total).
+
 ## 6. Portability rules (Render → DigitalOcean, and anywhere else)
 
 - **Dockerfile is the deploy contract.** The same image runs on Render (Docker web

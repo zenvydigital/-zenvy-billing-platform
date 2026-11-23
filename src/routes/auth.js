@@ -102,6 +102,11 @@ router.post('/register', async (req, res, next) => {
       action: 'create',
       detail: { email, role, bootstrap: isBootstrap },
     });
+    // Bootstrap only: sign the new owner in immediately (the first-run
+    // setup screen promises this). Non-bootstrap registers must NOT touch
+    // the caller's session — an owner creating a biller/viewer stays
+    // signed in as themselves.
+    if (isBootstrap) setSessionCookie(res, signToken(user));
     res.status(201).json({ ok: true, user: publicUser(user) });
   } catch (err) {
     next(err);

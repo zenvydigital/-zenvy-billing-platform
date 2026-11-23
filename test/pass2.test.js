@@ -79,6 +79,10 @@ async function main() {
 
   r = await req('POST', '/api/auth/register', { name: 'Zenvy Owner', email: 'owner@zenvydigitals.online', password: 'password123' });
   check('bootstrap owner created', r.status === 201 && r.json.user.role === 'owner');
+  check('bootstrap register sets a session cookie', !!cookie);
+
+  r = await req('GET', '/api/auth/me');
+  check('me works right after bootstrap register (no separate login)', r.status === 200 && r.json.user.email === 'owner@zenvydigitals.online');
 
   r = await req('POST', '/api/auth/login', { email: 'owner@zenvydigitals.online', password: 'password123' });
   check('owner login works', r.status === 200 && !!cookie);
@@ -115,6 +119,7 @@ async function main() {
   // --- viewer role ---------------------------------------------------
   r = await req('POST', '/api/auth/register', { name: 'Vera Viewer', email: 'viewer@testclinic.example', password: 'password123', role: 'viewer', clinic_id: clinicId });
   check('viewer account created by owner', r.status === 201 && r.json.user.role === 'viewer');
+  check('non-bootstrap register keeps the owner signed in', cookie === ownerCookie);
 
   r = await req('POST', '/api/auth/login', { email: 'viewer@testclinic.example', password: 'password123' });
   const viewerCookie = cookie;
