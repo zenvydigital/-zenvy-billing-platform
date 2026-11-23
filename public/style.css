@@ -2,17 +2,32 @@
  *
  * DESIGN LANGUAGE: GOOGLE-STYLE — clean white, simple shapes, generous
  * whitespace, light borders, subtle shadows (like about.google/products).
- * Zenvy branding (navy #0b1f3a + gold #c9a227) is used SPARINGLY: the
- * logo wordmark and a few key accents only. NEVER Google's "G" logo or
+ * Zenvy branding (navy #0b1f3a + gold #c9a227) is used for the logo, the
+ * primary actions and the active-nav accent. NEVER Google's "G" logo or
  * any Google trademark — the logo is ours (Zenvy navy + gold 'Z').
+ *
+ * LAYOUT: left sidebar navigation (logo on top, grouped nav) + top bar
+ * (clinic picker, signed-in user, sign out) + content column. On narrow
+ * screens the sidebar collapses into a horizontal scrolling nav strip.
+ * All ids/classes below are hooks used by public/app.js — do not rename
+ * them: #authView #appView #clinicPicker #clinicSelect #whoBox
+ * #logoutBtn #tabs #tabContent #simBanner #toast .card .pill .btn
+ * .btnrow .tab .statgrid .stat .showcase-list .errlist form.grid
+ * .muted .hidden .clinicpick .check .big .auth-split .showcase
  */
 :root {
   --navy: #0b1f3a;       /* Zenvy brand — logo + primary actions + active states */
+  --navy-700: #142c4e;   /* primary button hover */
+  --navy-100: #e7ecf2;   /* active nav background (navy tint) */
+  --navy-50: #f4f6f9;    /* lightest navy tint (showcase) */
   --gold: #c9a227;       /* Zenvy brand — sparing accents only (logo word, active tab line) */
-  --gold-soft: #fef7e0;
+  --gold-soft: #fef9e7;
+  --gold-line: #ecd27a;
   --ink: #202124;        /* Google near-black text */
+  --ink-soft: #3c4043;
   --muted: #5f6368;      /* Google gray text */
   --line: #dadce0;       /* Google border */
+  --line-soft: #e8eaed;
   --bg: #f8f9fa;         /* Google page gray */
   --hover: #f1f3f4;
   --green: #188038;
@@ -21,97 +36,244 @@
   --red-bg: #fce8e6;
   --amber: #e37400;
   --amber-bg: #fef7e0;
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(60, 64, 67, .3), 0 1px 3px 1px rgba(60, 64, 67, .15);
+  --shadow-lg: 0 1px 3px rgba(60, 64, 67, .3), 0 4px 8px 3px rgba(60, 64, 67, .15);
 }
 * { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
   font-family: "Google Sans", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   background: var(--bg);
   color: var(--ink);
+  line-height: 1.5;
 }
 a { color: var(--navy); }
+code { background: var(--hover); border-radius: 6px; padding: 1px 6px; font-size: 13px; }
+:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; border-radius: 4px; }
 
-/* Header: white, like a Google product page — logo left, plain text right. */
-header { background: #fff; border-bottom: 1px solid var(--line); }
-header .wrap { max-width: 1080px; margin: 0 auto; padding: 14px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-.brand { font-size: 22px; font-weight: 700; letter-spacing: .2px; color: var(--navy); }
+/* ---------- Logged-out screens ---------- */
+#authView { max-width: 1080px; margin: 0 auto; padding: 36px 20px 48px; }
+#authView:empty { display: none; }
+/* Brand mark above the sign-in / trial screens (pure CSS, Zenvy Z + wordmark). */
+#authView:not(:empty)::before {
+  content: ""; display: block; width: 250px; height: 58px; margin: 2px auto 28px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 250 58'%3E%3Crect x='0' y='5' width='48' height='48' rx='11' fill='%230b1f3a'/%3E%3Ctext x='24' y='39' font-family='Arial,sans-serif' font-size='30' font-weight='bold' fill='%23c9a227' text-anchor='middle'%3EZ%3C/text%3E%3Ctext x='60' y='28' font-family='Arial,sans-serif' font-size='24' font-weight='bold' fill='%230b1f3a'%3EZENVY%3C/text%3E%3Ctext x='61' y='49' font-family='Arial,sans-serif' font-size='12' letter-spacing='4' fill='%235f6368'%3EDIGITALS%3C/text%3E%3C/svg%3E") no-repeat center / contain;
+}
+
+/* ---------- App shell: sidebar + content column ---------- */
+#appView { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 264px; flex: 0 0 264px;
+  background: #fff; border-right: 1px solid var(--line);
+  position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  padding: 18px 12px 24px;
+  display: flex; flex-direction: column;
+}
+.side-brand {
+  display: flex; align-items: center; gap: 11px;
+  padding: 2px 10px 18px; margin-bottom: 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.logo-mark {
+  width: 38px; height: 38px; flex: 0 0 38px;
+  background: var(--navy); color: var(--gold);
+  border-radius: 11px; display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 800; line-height: 1;
+  box-shadow: 0 1px 2px rgba(11, 31, 58, .35);
+}
+.brand { display: block; font-size: 16px; font-weight: 700; letter-spacing: .4px; color: var(--navy); line-height: 1.2; }
 .brand span { color: var(--gold); }
-header .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
-header .spacer { flex: 1; }
-header .who { font-size: 13px; color: var(--muted); text-align: right; line-height: 1.4; }
+.brand-sub { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
 
-main .wrap { max-width: 1080px; margin: 0 auto; padding: 20px 20px 48px; }
+.content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  background: #fff; border-bottom: 1px solid var(--line);
+  padding: 12px 24px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+}
+.spacer { flex: 1; }
+.who { font-size: 13px; color: var(--muted); text-align: right; line-height: 1.45; }
+.who::first-line { font-weight: 600; color: var(--ink); }
 
-/* Cards: white, light border, soft Google-style shadow, 8px corners. */
-.card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(60, 64, 67, .3), 0 1px 3px 1px rgba(60, 64, 67, .15); }
-.card h2 { margin: 0 0 6px; color: var(--ink); font-size: 20px; font-weight: 500; }
-.card h3 { margin: 20px 0 8px; color: var(--ink); font-size: 15px; font-weight: 500; }
-.card p { margin: 6px 0; color: var(--muted); line-height: 1.55; }
+main .wrap { max-width: 1120px; margin: 0 auto; padding: 24px 24px 48px; width: 100%; }
+
+/* ---------- Cards ---------- */
+.card {
+  background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 24px; margin-bottom: 16px; box-shadow: var(--shadow);
+}
+.card h2 { margin: 0 0 6px; color: var(--ink); font-size: 20px; font-weight: 500; line-height: 1.3; }
+.card h3 { margin: 22px 0 8px; color: var(--ink); font-size: 15px; font-weight: 500; }
+.card p { margin: 6px 0; color: var(--muted); line-height: 1.6; }
+.card p strong, .card li strong { color: var(--ink); }
+.card ul, .card ol { margin: 8px 0; padding-left: 22px; line-height: 1.6; color: var(--muted); }
+.card ul li, .card ol li { margin: 4px 0; }
 .muted { color: var(--muted); font-size: 13px; }
 
-/* Pills: soft Google-style status chips. */
-.pill { display: inline-block; background: var(--hover); color: var(--muted); border: 1px solid var(--line); border-radius: 16px; padding: 2px 10px; font-size: 12px; font-weight: 500; }
-.pill.sim { background: var(--hover); color: var(--muted); border-color: var(--line); }
+/* Trial / subscription cards get a soft gold tint so the offer stands out. */
+.card:has([data-action="goto-subscribe"]) {
+  background: linear-gradient(180deg, #fffdf4, #fff 75%);
+  border-color: var(--gold-line);
+}
+
+/* Simulation banner: slim info strip, not a full card. */
+#simBanner {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 16px; background: var(--hover);
+  border-color: var(--line-soft); box-shadow: none; font-size: 13px;
+}
+#simBanner .pill { flex: 0 0 auto; margin-top: 1px; }
+#simBanner .muted { font-size: 13px; line-height: 1.5; }
+
+/* ---------- Pills ---------- */
+.pill {
+  display: inline-block; background: var(--hover); color: var(--muted);
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 2px 10px; font-size: 12px; font-weight: 500; line-height: 1.5; white-space: nowrap;
+}
+.pill.sim { background: #e8eaed; color: var(--ink-soft); border-color: #d2d5d9; }
 .pill.ok { background: var(--green-bg); color: var(--green); border-color: #b9dfc3; }
 .pill.bad { background: var(--red-bg); color: var(--red); border-color: #f5c6c2; }
 .pill.warn { background: var(--amber-bg); color: var(--amber); border-color: #f3d9a4; }
 
-/* Buttons: solid navy primary (Zenvy brand), white ghost, soft red danger. */
-.btn { display: inline-block; background: var(--navy); color: #fff; font-weight: 500; border: 1px solid var(--navy); border-radius: 8px; padding: 9px 16px; cursor: pointer; font-size: 14px; text-decoration: none; }
-.btn:hover { filter: brightness(1.15); }
-.btn.ghost { background: #fff; color: var(--navy); border: 1px solid var(--line); }
-.btn.ghost:hover { background: var(--hover); filter: none; }
-.btn.danger { background: var(--red-bg); color: var(--red); border: 1px solid #f5c6c2; }
-.btn.danger:hover { background: #fadbd8; filter: none; }
-.btn.small { padding: 5px 10px; font-size: 13px; border-radius: 6px; }
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-block; background: var(--navy); color: #fff; font-weight: 500;
+  border: 1px solid var(--navy); border-radius: 8px; padding: 10px 18px;
+  cursor: pointer; font-size: 14px; font-family: inherit; text-decoration: none;
+  box-shadow: 0 1px 2px rgba(60, 64, 67, .25);
+  transition: background .15s ease, box-shadow .15s ease;
+}
+.btn:hover { background: var(--navy-700); }
+.btn.ghost { background: #fff; color: var(--navy); border: 1px solid var(--line); box-shadow: none; }
+.btn.ghost:hover { background: var(--hover); }
+.btn.danger { background: var(--red-bg); color: var(--red); border: 1px solid #f5c6c2; box-shadow: none; }
+.btn.danger:hover { background: #fadbd8; }
+.btn.small { padding: 6px 12px; font-size: 13px; border-radius: 7px; }
 .btn:disabled { opacity: .55; cursor: default; }
-.btnrow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.btnrow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
 
-/* Tabs: Google-style text tabs — active tab gets the gold underline. */
-.tabs { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 16px; border-bottom: 1px solid var(--line); }
-.tab { background: none; border: none; border-bottom: 3px solid transparent; border-radius: 8px 8px 0 0; padding: 10px 14px; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--muted); font-family: inherit; }
+/* ---------- Sidebar navigation ---------- */
+.tabs { display: flex; flex-direction: column; gap: 2px; }
+.tab {
+  display: block; width: 100%; text-align: left;
+  background: none; border: none; border-left: 3px solid transparent; border-radius: 8px;
+  padding: 9px 12px; cursor: pointer; font-size: 14px; font-weight: 500;
+  color: var(--ink-soft); font-family: inherit;
+  transition: background .15s ease, color .15s ease;
+}
 .tab:hover { color: var(--ink); background: var(--hover); }
-.tab.active { color: var(--navy); border-bottom-color: var(--gold); }
+.tab.active { color: var(--navy); background: var(--navy-100); font-weight: 600; border-left-color: var(--gold); }
+/* Group labels — pure CSS, keyed on the tab's data-tab (app.js renders the buttons). */
+.tab[data-tab="dashboard"]::before { content: "Workspace"; }
+.tab[data-tab="import"]::before { content: "Tools"; }
+.tab[data-tab="subscribe"]::before { content: "Platform"; }
+.tab[data-tab="dashboard"]::before,
+.tab[data-tab="import"]::before,
+.tab[data-tab="subscribe"]::before {
+  display: block; font-size: 11px; font-weight: 700; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--muted); margin: 2px 0 6px;
+}
+.tab[data-tab="import"], .tab[data-tab="subscribe"] { margin-top: 12px; }
 
-/* Tables: Google-style — gray 13px headers, no uppercase shouting. */
+/* ---------- Tables ---------- */
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
-th, td { text-align: left; padding: 10px; border-bottom: 1px solid #e8eaed; vertical-align: top; }
-th { color: var(--muted); font-size: 13px; font-weight: 500; }
+th, td { text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+th { color: var(--muted); font-size: 12px; font-weight: 500; letter-spacing: .02em; }
 tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: #f8f9fa; }
+td .btn { margin: 2px 2px 2px 0; }
+details summary { cursor: pointer; font-weight: 500; color: var(--navy); font-size: 13px; margin-top: 4px; }
+details ul { margin: 6px 0 0; }
 
-/* Forms: light borders, 8px corners, navy focus ring. */
-form.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
+/* ---------- Forms ---------- */
+form.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-top: 14px; }
 label { display: block; font-size: 13px; font-weight: 500; color: var(--ink); }
-label input, label select, label textarea { display: block; width: 100%; margin-top: 4px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; font-family: inherit; background: #fff; color: var(--ink); }
-label input:focus, label select:focus, label textarea:focus { outline: none; border-color: var(--navy); box-shadow: 0 0 0 2px rgba(11, 31, 58, .12); }
-input[type="checkbox"] { width: auto; }
+label input, label select, label textarea {
+  display: block; width: 100%; margin-top: 5px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 8px; font-size: 14px;
+  font-family: inherit; background: #fff; color: var(--ink);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+label input:focus, label select:focus, label textarea:focus {
+  outline: none; border-color: var(--navy); box-shadow: 0 0 0 3px rgba(11, 31, 58, .12);
+}
+input[type="checkbox"] { width: auto; accent-color: var(--navy); }
 .check { display: flex; gap: 8px; align-items: center; font-weight: 500; color: var(--ink); font-size: 14px; }
+select.clinicpick {
+  padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line);
+  background: #fff; color: var(--ink); font-size: 14px; font-weight: 500;
+  font-family: inherit; min-width: 200px; max-width: 300px;
+}
+select.clinicpick:focus { outline: none; border-color: var(--navy); box-shadow: 0 0 0 3px rgba(11, 31, 58, .12); }
 
-/* Stats: plain white tiles, near-black numbers. */
-.big { font-size: 34px; font-weight: 700; color: var(--ink); }
-.statgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
-.stat { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
-.stat .n { font-size: 26px; font-weight: 700; color: var(--ink); }
-.stat .l { font-size: 13px; color: var(--muted); margin-top: 2px; }
+/* ---------- Stats ---------- */
+.big { font-size: 34px; font-weight: 700; color: var(--ink); letter-spacing: -.01em; }
+.statgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; margin-top: 14px; }
+.stat {
+  background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px; transition: box-shadow .15s ease;
+}
+.stat:hover { box-shadow: var(--shadow); }
+.stat .n { font-size: 28px; font-weight: 700; color: var(--ink); letter-spacing: -.01em; line-height: 1.2; }
+.stat .l { font-size: 13px; color: var(--muted); margin-top: 4px; line-height: 1.45; }
 
 .errlist { background: var(--red-bg); border: 1px solid #f5c6c2; border-radius: 8px; padding: 10px 14px; margin: 10px 0; color: var(--red); font-size: 13px; }
 .errlist li { margin: 3px 0; }
 
-/* Toast: Google-snackbar style — dark gray pill. */
-#toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #202124; color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 14px; display: none; z-index: 50; max-width: 90vw; box-shadow: 0 6px 24px rgba(0, 0, 0, .25); }
+/* ---------- Toast ---------- */
+#toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  background: #202124; color: #fff; padding: 12px 20px; border-radius: 8px;
+  font-size: 14px; display: none; z-index: 50; max-width: 90vw;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .25);
+}
 #toast.err { background: var(--red); }
 
-/* Logged-out auth screens (Pass 5): split screen — product showcase left,
- * sign-in / trial form right. Stacks on narrow screens. */
-.auth-split { display: grid; grid-template-columns: 1.05fr 1fr; gap: 16px; align-items: start; }
-@media (max-width: 760px) { .auth-split { grid-template-columns: 1fr; } }
+/* ---------- Logged-out auth screens (Pass 5): split screen ---------- */
+.auth-split { display: grid; grid-template-columns: 1.05fr 1fr; gap: 24px; align-items: start; }
 .auth-split .card { margin-bottom: 0; }
-.showcase h2 { font-size: 26px; line-height: 1.3; }
-.showcase-list { margin: 14px 0; padding-left: 20px; color: var(--ink); line-height: 1.7; font-size: 14px; }
-.showcase-list li { margin: 4px 0; }
+.showcase { background: linear-gradient(180deg, var(--navy-50), #fff 60%); }
+.showcase h2 { font-size: 28px; line-height: 1.25; }
+.showcase-list { list-style: none; margin: 16px 0; padding-left: 0; }
+.showcase-list li { margin: 8px 0; color: var(--ink); line-height: 1.55; font-size: 14px; }
+.showcase .showcase-list li { position: relative; padding-left: 26px; }
+.showcase .showcase-list li::before {
+  content: "✓"; position: absolute; left: 2px; top: 0; color: var(--green); font-weight: 700;
+}
 
 .hidden { display: none !important; }
 
-select.clinicpick { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); background: #fff; color: var(--ink); font-size: 14px; }
+footer {
+  margin-top: auto; text-align: center; color: var(--muted); font-size: 13px;
+  padding: 24px 20px 32px; border-top: 1px solid var(--line-soft);
+}
 
-footer { text-align: center; color: var(--muted); font-size: 13px; padding: 0 20px 32px; }
+/* ---------- Narrow screens: sidebar becomes a top nav strip ---------- */
+@media (max-width: 900px) {
+  #appView { flex-direction: column; }
+  .sidebar {
+    width: 100%; flex: none; height: auto; position: static;
+    border-right: none; border-bottom: 1px solid var(--line);
+    padding: 12px 12px 8px; overflow: visible;
+  }
+  .side-brand { padding: 2px 6px 12px; margin-bottom: 8px; }
+  .tabs { flex-direction: row; overflow-x: auto; gap: 2px; padding-bottom: 6px; scrollbar-width: thin; }
+  .tab {
+    width: auto; white-space: nowrap; border-left: none;
+    border-bottom: 3px solid transparent; border-radius: 8px 8px 0 0; padding: 8px 12px;
+  }
+  .tab.active { background: transparent; border-bottom-color: var(--gold); }
+  .tab::before { display: none !important; }
+  .tab[data-tab="import"], .tab[data-tab="subscribe"] { margin-top: 0; }
+  .topbar { padding: 10px 16px; }
+  main .wrap { padding: 16px 16px 40px; }
+  .card { padding: 18px; }
+  #authView { padding: 24px 16px 40px; }
+}
+@media (max-width: 760px) {
+  .auth-split { grid-template-columns: 1fr; }
+  .showcase h2 { font-size: 24px; }
+}
