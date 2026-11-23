@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zenvy Digitals — Billing Platform</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div>
+      <div class="brand">ZENVY <span>DIGITALS</span></div>
+      <div class="sub">ABA Therapy Billing Platform — for US clinics</div>
+    </div>
+    <div class="spacer"></div>
+    <div id="clinicPicker" class="hidden">
+      <select id="clinicSelect" class="clinicpick" aria-label="Clinic"></select>
+    </div>
+    <div id="whoBox" class="who hidden"></div>
+    <button id="logoutBtn" class="btn ghost small hidden">Sign out</button>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <div id="authView"></div>
+    <div id="appView" class="hidden">
+      <div class="card" id="simBanner">
+        <span class="pill sim">Simulation mode</span>
+        <span class="muted"> — Clearinghouse submits, vendor connections and Sara calls run on the built-in simulator until the real vendor accounts and approvals are in place. Nothing here talks to a real payer yet.</span>
+      </div>
+      <div class="tabs" id="tabs"></div>
+      <div id="tabContent"></div>
+    </div>
+  </div>
+</main>
+<footer>© Zenvy Digitals — ABA Billing, Handled Properly. · Questions? billing@zenvydigitals.online</footer>
+<div id="toast"></div>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,108 @@
+/* Zenvy Digitals — Billing Platform UI.
+ *
+ * DESIGN LANGUAGE: GOOGLE-STYLE — clean white, simple shapes, generous
+ * whitespace, light borders, subtle shadows (like about.google/products).
+ * Zenvy branding (navy #0b1f3a + gold #c9a227) is used SPARINGLY: the
+ * logo wordmark and a few key accents only. NEVER Google's "G" logo or
+ * any Google trademark — the logo is ours (Zenvy navy + gold 'Z').
+ */
+:root {
+  --navy: #0b1f3a;       /* Zenvy brand — logo + primary actions + active states */
+  --gold: #c9a227;       /* Zenvy brand — sparing accents only (logo word, active tab line) */
+  --gold-soft: #fef7e0;
+  --ink: #202124;        /* Google near-black text */
+  --muted: #5f6368;      /* Google gray text */
+  --line: #dadce0;       /* Google border */
+  --bg: #f8f9fa;         /* Google page gray */
+  --hover: #f1f3f4;
+  --green: #188038;
+  --green-bg: #e6f4ea;
+  --red: #d93025;
+  --red-bg: #fce8e6;
+  --amber: #e37400;
+  --amber-bg: #fef7e0;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Google Sans", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+}
+a { color: var(--navy); }
+
+/* Header: white, like a Google product page — logo left, plain text right. */
+header { background: #fff; border-bottom: 1px solid var(--line); }
+header .wrap { max-width: 1080px; margin: 0 auto; padding: 14px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.brand { font-size: 22px; font-weight: 700; letter-spacing: .2px; color: var(--navy); }
+.brand span { color: var(--gold); }
+header .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+header .spacer { flex: 1; }
+header .who { font-size: 13px; color: var(--muted); text-align: right; line-height: 1.4; }
+
+main .wrap { max-width: 1080px; margin: 0 auto; padding: 20px 20px 48px; }
+
+/* Cards: white, light border, soft Google-style shadow, 8px corners. */
+.card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(60, 64, 67, .3), 0 1px 3px 1px rgba(60, 64, 67, .15); }
+.card h2 { margin: 0 0 6px; color: var(--ink); font-size: 20px; font-weight: 500; }
+.card h3 { margin: 20px 0 8px; color: var(--ink); font-size: 15px; font-weight: 500; }
+.card p { margin: 6px 0; color: var(--muted); line-height: 1.55; }
+.muted { color: var(--muted); font-size: 13px; }
+
+/* Pills: soft Google-style status chips. */
+.pill { display: inline-block; background: var(--hover); color: var(--muted); border: 1px solid var(--line); border-radius: 16px; padding: 2px 10px; font-size: 12px; font-weight: 500; }
+.pill.sim { background: var(--hover); color: var(--muted); border-color: var(--line); }
+.pill.ok { background: var(--green-bg); color: var(--green); border-color: #b9dfc3; }
+.pill.bad { background: var(--red-bg); color: var(--red); border-color: #f5c6c2; }
+.pill.warn { background: var(--amber-bg); color: var(--amber); border-color: #f3d9a4; }
+
+/* Buttons: solid navy primary (Zenvy brand), white ghost, soft red danger. */
+.btn { display: inline-block; background: var(--navy); color: #fff; font-weight: 500; border: 1px solid var(--navy); border-radius: 8px; padding: 9px 16px; cursor: pointer; font-size: 14px; text-decoration: none; }
+.btn:hover { filter: brightness(1.15); }
+.btn.ghost { background: #fff; color: var(--navy); border: 1px solid var(--line); }
+.btn.ghost:hover { background: var(--hover); filter: none; }
+.btn.danger { background: var(--red-bg); color: var(--red); border: 1px solid #f5c6c2; }
+.btn.danger:hover { background: #fadbd8; filter: none; }
+.btn.small { padding: 5px 10px; font-size: 13px; border-radius: 6px; }
+.btn:disabled { opacity: .55; cursor: default; }
+.btnrow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+
+/* Tabs: Google-style text tabs — active tab gets the gold underline. */
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 16px; border-bottom: 1px solid var(--line); }
+.tab { background: none; border: none; border-bottom: 3px solid transparent; border-radius: 8px 8px 0 0; padding: 10px 14px; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--muted); font-family: inherit; }
+.tab:hover { color: var(--ink); background: var(--hover); }
+.tab.active { color: var(--navy); border-bottom-color: var(--gold); }
+
+/* Tables: Google-style — gray 13px headers, no uppercase shouting. */
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 10px; border-bottom: 1px solid #e8eaed; vertical-align: top; }
+th { color: var(--muted); font-size: 13px; font-weight: 500; }
+tr:last-child td { border-bottom: none; }
+
+/* Forms: light borders, 8px corners, navy focus ring. */
+form.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
+label { display: block; font-size: 13px; font-weight: 500; color: var(--ink); }
+label input, label select, label textarea { display: block; width: 100%; margin-top: 4px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; font-family: inherit; background: #fff; color: var(--ink); }
+label input:focus, label select:focus, label textarea:focus { outline: none; border-color: var(--navy); box-shadow: 0 0 0 2px rgba(11, 31, 58, .12); }
+input[type="checkbox"] { width: auto; }
+.check { display: flex; gap: 8px; align-items: center; font-weight: 500; color: var(--ink); font-size: 14px; }
+
+/* Stats: plain white tiles, near-black numbers. */
+.big { font-size: 34px; font-weight: 700; color: var(--ink); }
+.statgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.stat { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+.stat .n { font-size: 26px; font-weight: 700; color: var(--ink); }
+.stat .l { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+.errlist { background: var(--red-bg); border: 1px solid #f5c6c2; border-radius: 8px; padding: 10px 14px; margin: 10px 0; color: var(--red); font-size: 13px; }
+.errlist li { margin: 3px 0; }
+
+/* Toast: Google-snackbar style — dark gray pill. */
+#toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #202124; color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 14px; display: none; z-index: 50; max-width: 90vw; box-shadow: 0 6px 24px rgba(0, 0, 0, .25); }
+#toast.err { background: var(--red); }
+
+.hidden { display: none !important; }
+
+select.clinicpick { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); background: #fff; color: var(--ink); font-size: 14px; }
+
+footer { text-align: center; color: var(--muted); font-size: 13px; padding: 0 20px 32px; }
