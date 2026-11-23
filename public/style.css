@@ -56,10 +56,10 @@ code { background: var(--hover); border-radius: 6px; padding: 1px 6px; font-size
 /* ---------- Logged-out screens ---------- */
 #authView { max-width: 1080px; margin: 0 auto; padding: 36px 20px 48px; }
 #authView:empty { display: none; }
-/* Brand mark above the sign-in / trial screens (pure CSS, Zenvy Z + wordmark). */
+/* Brand mark above the sign-in / trial screens: the real Zenvy logo. */
 #authView:not(:empty)::before {
-  content: ""; display: block; width: 250px; height: 58px; margin: 2px auto 28px;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 250 58'%3E%3Crect x='0' y='5' width='48' height='48' rx='11' fill='%230b1f3a'/%3E%3Ctext x='24' y='39' font-family='Arial,sans-serif' font-size='30' font-weight='bold' fill='%23c9a227' text-anchor='middle'%3EZ%3C/text%3E%3Ctext x='60' y='28' font-family='Arial,sans-serif' font-size='24' font-weight='bold' fill='%230b1f3a'%3EZENVY%3C/text%3E%3Ctext x='61' y='49' font-family='Arial,sans-serif' font-size='12' letter-spacing='4' fill='%235f6368'%3EDIGITALS%3C/text%3E%3C/svg%3E") no-repeat center / contain;
+  content: ""; display: block; width: 64px; height: 64px; margin: 2px auto 28px;
+  background: url("/logo.png") no-repeat center / contain;
 }
 
 /* ---------- App shell: sidebar + content column ---------- */
@@ -77,11 +77,8 @@ code { background: var(--hover); border-radius: 6px; padding: 1px 6px; font-size
   border-bottom: 1px solid var(--line-soft);
 }
 .logo-mark {
-  width: 38px; height: 38px; flex: 0 0 38px;
-  background: var(--navy); color: var(--gold);
-  border-radius: 11px; display: flex; align-items: center; justify-content: center;
-  font-size: 22px; font-weight: 800; line-height: 1;
-  box-shadow: 0 1px 2px rgba(11, 31, 58, .35);
+  width: 40px; height: 40px; flex: 0 0 40px;
+  object-fit: contain;
 }
 .brand { display: block; font-size: 16px; font-weight: 700; letter-spacing: .4px; color: var(--navy); line-height: 1.2; }
 .brand span { color: var(--gold); }
