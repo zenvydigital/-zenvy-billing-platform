@@ -859,6 +859,12 @@ async function renderSettings() {
       <label>Contact email<input name="contact_email" type="email"></label>
       <button class="btn" type="submit">Create clinic</button>
     </form>
+  </div>` : ''}
+  ${isZenvyOwner() && c ? `
+  <div class="card">
+    <h2>Delete clinic</h2>
+    <p>Deletes the clinic currently selected in the picker above — <strong>${esc(c.name)}</strong>. Its users go with it. A clinic that still holds billing records (patients, claims, sessions, authorizations, denials, referrals, ERA lines) cannot be deleted — remove that data first.</p>
+    <div class="btnrow"><button class="btn danger" data-action="delete-clinic">Delete “${esc(c.name)}”</button></div>
   </div>` : ''}`;
 }
 
@@ -1381,6 +1387,17 @@ document.addEventListener('click', async (e) => {
       if (!confirm('Remove this user from the clinic?')) return;
       await del(`/api/clinics/${cid()}/users/${id}`);
       toast('User removed.');
+    } else if (action === 'delete-clinic') {
+      const c = clinic();
+      if (!c) { toast('No clinic selected.', true); return; }
+      if (!confirm(`Delete clinic "${c.name}"? This permanently removes the clinic and its users. A clinic that still holds billing records cannot be deleted.`)) return;
+      await del(`/api/clinics/${c.id}`);
+      toast(`Clinic "${c.name}" deleted.`);
+      const { clinics } = await get('/api/clinics');
+      state.clinics = clinics;
+      $('#clinicSelect').innerHTML = clinics.map((x) => `<option value="${x.id}">${esc(x.name)}${x.is_demo ? ' (SAMPLE DATA)' : ''}</option>`).join('');
+      state.clinicId = clinics[0] ? clinics[0].id : null;
+      if (state.clinicId) $('#clinicSelect').value = String(state.clinicId);
     } else if (action === 'demo-load') {
       const r = await post('/api/demo/load', {});
       toast('Demo data loaded — see the new "Demo Clinic — SAMPLE DATA" in the clinic picker.');

@@ -14,6 +14,10 @@
  * recorded (and the trial owner CAN record it); own subscription visible
  * and manageable; clinic-scoped sample data load/remove; rate limit
  * (5/hour per IP); bootstrap/first-run unchanged; normal login works.
+ * Pass 5 follow-up: platform-owner clinic delete (DELETE /api/clinics/:id
+ * surfaced by the Settings "Delete clinic" button) — empty clinic deleted
+ * with its users + audit row; scoped users 403; clinic with billing
+ * records 409 and stays; button exists in the UI, platform-owner-only.
  *
  * Run with: npm run test:pass5
  */
@@ -22,6 +26,8 @@ process.env.JWT_SECRET = 'test-secret-for-pass5-only';
 process.env.NODE_ENV = 'test';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { newDb } = require('pg-mem');
 
 let passed = 0;
@@ -185,6 +191,49 @@ async function main() {
   r = await req('GET', `/api/clinics/${trialClinicId}/audit?limit=500`, undefined, ownerCookie);
   const actions = new Set((r.json.audit || []).map((e) => e.action));
   check('audit log records public trial signup', r.status === 200 && actions.has('trial-start'));
+
+  // --- delete clinic (Pass 5 follow-up: Settings button surfaces DELETE /api/clinics/:id) ---
+  r = await req('POST', '/api/public/start-trial',
+    { clinicName: 'Delete Me Clinic', name: 'Temp Owner', email: 'deleteme@example.com', password: 'password123' },
+    null, ip(20));
+  check('empty trial clinic created for the delete test', r.status === 201);
+  const deleteClinicId = r.json.clinic.id;
+  const deleteUserCookie = r.setCookie;
+
+  r = await req('DELETE', `/api/clinics/${deleteClinicId}`, undefined, trialCookie);
+  check('clinic-scoped user cannot delete another clinic', r.status === 403);
+  r = await req('DELETE', `/api/clinics/${deleteClinicId}`, undefined, deleteUserCookie);
+  check('clinic-scoped user cannot delete even their own clinic', r.status === 403);
+
+  r = await req('DELETE', `/api/clinics/${deleteClinicId}`, undefined, ownerCookie);
+  check('platform owner deletes an empty clinic', r.status === 200 && r.json.deleted === true);
+  r = await req('GET', `/api/clinics/${deleteClinicId}`, undefined, ownerCookie);
+  check('deleted clinic is gone (404)', r.status === 404);
+  r = await req('GET', '/api/clinics', undefined, ownerCookie);
+  check('deleted clinic no longer listed', r.status === 200 && !(r.json.clinics || []).some((x) => x.id === deleteClinicId));
+  r = await req('GET', '/api/auth/me', undefined, deleteUserCookie);
+  check('deleted clinic user account is gone too', r.status === 401);
+  r = await req('GET', `/api/clinics/${trialClinicId}/audit?limit=500`, undefined, ownerCookie);
+  const deleteRows = (r.json.audit || []).filter((e) => e.action === 'delete' && e.entity === 'clinic' && e.entity_id === deleteClinicId);
+  check('audit log records the clinic delete', r.status === 200 && deleteRows.length === 1);
+
+  // a clinic holding billing records refuses with 409 and stays
+  r = await req('POST', '/api/clinics', { name: 'Busy Clinic', state: 'TX' }, ownerCookie);
+  check('clinic with future records created', r.status === 201);
+  const busyClinicId = r.json.clinic.id;
+  r = await req('PATCH', `/api/clinics/${busyClinicId}`, { baa_signed: true }, ownerCookie);
+  check('BAA recorded for the busy clinic', r.status === 200 && r.json.clinic.baa_signed === true);
+  r = await req('POST', `/api/clinics/${busyClinicId}/patients`, { initials: 'A.B.', payer: 'BCBS', member_id: 'M-1' }, ownerCookie);
+  check('patient added to the busy clinic', r.status === 201);
+  r = await req('DELETE', `/api/clinics/${busyClinicId}`, undefined, ownerCookie);
+  check('clinic with billing records refuses with 409', r.status === 409 && /still holds data/.test(r.json.error || ''));
+  r = await req('GET', `/api/clinics/${busyClinicId}`, undefined, ownerCookie);
+  check('refused clinic is NOT deleted', r.status === 200 && r.json.clinic.id === busyClinicId);
+
+  // the Settings button itself exists and is platform-owner-only in the UI
+  const appJs = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  check('Settings has a Delete clinic button', /data-action="delete-clinic"/.test(appJs));
+  check('Delete clinic button is gated to the Zenvy platform owner', /isZenvyOwner\(\) && c \?[\s\S]{0,600}delete-clinic/.test(appJs));
 
   server.close();
   console.log(`\n[test] pass5: ${passed} checks passed`);

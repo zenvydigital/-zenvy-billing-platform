@@ -126,3 +126,4 @@ check is ever cleared; see DEPLOY.md Route B. Do NOT use Koyeb or Zeabur
   clearinghouse is the real route.
 - Partial updates **merge** with stored values — an omitted field is never blanked.
 - Deletes **unlink** linked records and show plain-language messages, never raw SQL.
+- The Zenvy platform owner can delete an empty clinic from Settings — a clinic holding billing records refuses with a plain message (409), never a silent delete; clinic-scoped users never see the button.
