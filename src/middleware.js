@@ -4,7 +4,13 @@
  * Request guards: authentication, role enforcement, clinic scoping.
  *
  * Roles (server-enforced on every route):
- *   owner  — everything, all clinics (clinic_id NULL = Zenvy platform owner)
+ *   owner  — Zenvy platform owner (clinic_id NULL): everything, all clinics.
+ *            A clinic-scoped user can also carry role 'owner' for their own
+ *            clinic (created by the platform owner) — loadClinic still
+ *            confines them to that clinic.
+ *   clinic — clinic owner created by public trial signup (Pass 5): owns
+ *            exactly one clinic, manages it fully, but never sees other
+ *            clinics, Costs & Model, or platform administration.
  *   biller — works billing inside their own clinic
  *   viewer — read-only; every write is rejected with a plain message
  */
@@ -50,6 +56,32 @@ function requireOwner(req, res, next) {
 }
 
 /**
+ * Zenvy platform owner only: role 'owner' AND clinic_id NULL. Clinic
+ * users — including clinic-scoped owners (role 'owner' with a clinic_id,
+ * and role 'clinic') — never pass this, so they can never create/delete
+ * clinics, see Costs & Model, or touch platform administration.
+ */
+function requirePlatformOwner(req, res, next) {
+  if (req.user.role !== 'owner' || req.user.clinic_id !== null) {
+    return next(new ApiError(403, 'Only the Zenvy platform owner can do this.'));
+  }
+  return next();
+}
+
+/**
+ * Owner of a clinic: role 'owner' or role 'clinic'. The clinic itself is
+ * already confined by loadClinic (a scoped user only ever touches their
+ * own clinic), so this is safe for clinic settings, subscription
+ * management, user management inside the clinic, and alert digests.
+ */
+function requireClinicOwner(req, res, next) {
+  if (req.user.role !== 'owner' && req.user.role !== 'clinic') {
+    return next(new ApiError(403, 'Only the clinic owner can do this.'));
+  }
+  return next();
+}
+
+/**
  * Load :clinicId and check the caller may touch it. Zenvy owners
  * (clinic_id NULL) may access any clinic; clinic users only their own.
  */
@@ -68,4 +100,4 @@ async function loadClinic(req, res, next) {
   }
 }
 
-module.exports = { requireAuth, requireWrite, requireOwner, loadClinic };
+module.exports = { requireAuth, requireWrite, requireOwner, requirePlatformOwner, requireClinicOwner, loadClinic };

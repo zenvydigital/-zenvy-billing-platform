@@ -60,8 +60,8 @@ router.post('/register', async (req, res, next) => {
     if (isBootstrap) {
       role = 'owner';
     } else {
-      if (!['owner', 'biller', 'viewer'].includes(req.body.role)) {
-        throw new ApiError(400, 'Role must be owner, biller or viewer.');
+      if (!['owner', 'biller', 'viewer', 'clinic'].includes(req.body.role)) {
+        throw new ApiError(400, 'Role must be owner, biller, viewer or clinic.');
       }
       role = req.body.role;
       // Clinic users belong to a clinic; a Zenvy owner has clinic_id NULL.
@@ -69,6 +69,10 @@ router.post('/register', async (req, res, next) => {
         const c = await query('SELECT id FROM clinics WHERE id = $1', [req.body.clinic_id]);
         if (c.rows.length === 0) throw new ApiError(400, 'That clinic does not exist.');
         clinicId = req.body.clinic_id;
+      }
+      // Role 'clinic' is a clinic owner — it makes no sense without a clinic.
+      if (role === 'clinic' && clinicId === null) {
+        throw new ApiError(400, 'A clinic owner account needs a clinic.');
       }
       // A clinic-scoped owner can only create users inside their own clinic.
       if (actor && actor.clinic_id !== null) {

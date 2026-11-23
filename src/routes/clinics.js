@@ -11,7 +11,7 @@
 const express = require('express');
 const { query } = require('../db');
 const { ApiError, cleanRow, applyMerge, toMoney, isoDate, daysUntil } = require('../util');
-const { requireAuth, requireWrite, requireOwner, loadClinic } = require('../middleware');
+const { requireAuth, requireWrite, requirePlatformOwner, requireClinicOwner, loadClinic } = require('../middleware');
 const { audit } = require('../audit');
 
 const router = express.Router();
@@ -40,7 +40,7 @@ router.get('/', async (req, res, next) => {
 });
 
 /** Create a clinic — Zenvy platform owner only. */
-router.post('/', requireOwner, async (req, res, next) => {
+router.post('/', requirePlatformOwner, async (req, res, next) => {
   try {
     if (req.user.clinic_id !== null) {
       throw new ApiError(403, 'Only the Zenvy platform owner can create clinics.');
@@ -75,7 +75,7 @@ router.get('/:clinicId', loadClinic, (req, res) => {
 router.patch('/:clinicId', loadClinic, requireWrite, async (req, res, next) => {
   try {
     const wantsFlags = FLAG_FIELDS.some((f) => req.body[f] !== undefined);
-    if (wantsFlags && req.user.role !== 'owner') {
+    if (wantsFlags && req.user.role !== 'owner' && req.user.role !== 'clinic') {
       throw new ApiError(403, 'Only the clinic owner can change BAA, payer-call opt-in or alert settings.');
     }
     if (req.body.status !== undefined && !['active', 'paused'].includes(req.body.status)) {
@@ -90,7 +90,7 @@ router.patch('/:clinicId', loadClinic, requireWrite, async (req, res, next) => {
 });
 
 /** Delete a clinic — only when it holds no billing data (plain message otherwise). */
-router.delete('/:clinicId', loadClinic, requireOwner, async (req, res, next) => {
+router.delete('/:clinicId', loadClinic, requirePlatformOwner, async (req, res, next) => {
   try {
     if (req.user.clinic_id !== null) {
       throw new ApiError(403, 'Only the Zenvy platform owner can delete clinics.');
@@ -119,8 +119,8 @@ router.delete('/:clinicId', loadClinic, requireOwner, async (req, res, next) => 
   }
 });
 
-/** Users inside a clinic (owner only). */
-router.get('/:clinicId/users', loadClinic, requireOwner, async (req, res, next) => {
+/** Users inside a clinic (the clinic's owner only). */
+router.get('/:clinicId/users', loadClinic, requireClinicOwner, async (req, res, next) => {
   try {
     const { rows } = await query(
       'SELECT id, clinic_id, name, email, role, created_at FROM users WHERE clinic_id = $1 ORDER BY name',
@@ -132,7 +132,7 @@ router.get('/:clinicId/users', loadClinic, requireOwner, async (req, res, next) 
   }
 });
 
-router.delete('/:clinicId/users/:userId', loadClinic, requireOwner, async (req, res, next) => {
+router.delete('/:clinicId/users/:userId', loadClinic, requireClinicOwner, async (req, res, next) => {
   try {
     if (Number(req.params.userId) === req.user.id) {
       throw new ApiError(400, 'You cannot remove your own account.');
@@ -181,6 +181,8 @@ router.get('/:clinicId/dashboard', loadClinic, async (req, res, next) => {
          (SELECT count(*)::int FROM claims WHERE clinic_id = $1) AS claims,
          (SELECT count(*)::int FROM patients WHERE clinic_id = $1 AND status = 'active') AS patients,
          (SELECT count(*)::int FROM sessions WHERE clinic_id = $1 AND status = 'completed') AS sessions,
+         (SELECT count(*)::int FROM authorizations WHERE clinic_id = $1) AS auths,
+         (SELECT count(*)::int FROM patients WHERE clinic_id = $1 AND is_demo = TRUE) AS sample_patients,
          (SELECT count(*)::int FROM payer_call_queue WHERE clinic_id = $1 AND status = 'queued') AS queued_calls`,
       [cid]
     );
@@ -193,10 +195,15 @@ router.get('/:clinicId/dashboard', loadClinic, async (req, res, next) => {
         openArClaims: openAr[0].n,
         openDenials: openDenials[0].n,
         authsExpiring30d: expiring[0].n,
-        totalClaims: counts[0].claims,
-        activePatients: counts[0].patients,
-        completedSessions: counts[0].sessions,
-        queuedCalls: counts[0].queued_calls,
+        totalClaims: Number(counts[0].claims),
+        activePatients: Number(counts[0].patients),
+        completedSessions: Number(counts[0].sessions),
+        totalAuths: Number(counts[0].auths),
+        // Number() guards the counts: pg-mem returns multi-subquery
+        // counts as [n] arrays in tests; real Postgres returns plain
+        // ints. Either way the API answers with a number.
+        hasSampleData: Number(counts[0].sample_patients) > 0,
+        queuedCalls: Number(counts[0].queued_calls),
       },
     });
   } catch (err) {
@@ -261,17 +268,17 @@ router.get('/:clinicId/reports/weekly', loadClinic, async (req, res, next) => {
       ok: true,
       report: {
         week: {
-          claimsCreated: week[0].claims_created,
-          claimsSubmitted: week[0].claims_submitted,
-          claimsPaid: week[0].claims_paid,
+          claimsCreated: Number(week[0].claims_created),
+          claimsSubmitted: Number(week[0].claims_submitted),
+          claimsPaid: Number(week[0].claims_paid),
           recovered: toMoney(week[0].recovered),
-          denialsOpened: week[0].denials_opened,
+          denialsOpened: Number(week[0].denials_opened),
         },
         totals: {
-          totalClaims: totals[0].total_claims,
+          totalClaims: Number(totals[0].total_claims),
           totalBilled: toMoney(totals[0].total_billed),
           totalRecovered: toMoney(totals[0].total_recovered),
-          openDenials: totals[0].open_denials,
+          openDenials: Number(totals[0].open_denials),
           openAr: toMoney(totals[0].open_ar),
         },
       },

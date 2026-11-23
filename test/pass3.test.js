@@ -70,7 +70,7 @@ async function main() {
 
   // --- bootstrap ------------------------------------------------------
   let r = await req('GET', '/health');
-  check('health answers, db up, version pass4', r.status === 200 && r.json.ok && r.json.db === 'up' && r.json.version === '0.4.0-pass4');
+  check('health answers, db up, version pass5', r.status === 200 && r.json.ok && r.json.db === 'up' && r.json.version === '0.5.0-pass5');
 
   r = await req('POST', '/api/auth/register', { name: 'Zenvy Owner', email: 'owner@zenvydigitals.online', password: 'password123' });
   check('bootstrap owner created', r.status === 201);
@@ -115,7 +115,7 @@ async function main() {
   check('subscription starts at none, $500/mo, Paddle not connected', r.json.subscription.status === 'none' && r.json.subscription.priceMonthly === 500 && r.json.subscription.paddle.mode === 'not-configured');
 
   r = await req('POST', `/api/clinics/${clinicId}/subscription/trial`, {});
-  check('trial starts, ends in 14 days', r.status === 201 && r.json.subscription.status === 'trial' && r.json.subscription.trialEndsAt === d(14));
+  check('trial starts, ends in 7 days', r.status === 201 && r.json.subscription.status === 'trial' && r.json.subscription.trialEndsAt === d(7));
 
   r = await req('POST', `/api/clinics/${clinicId}/subscription/trial`, {});
   check('second trial refused', r.status === 409);

@@ -24,7 +24,8 @@
     "test:migrations": "node test/migrations.test.js",
     "test:pass2": "node test/pass2.test.js",
     "test:pass3": "node test/pass3.test.js",
-    "test:pass4": "node test/pass4.test.js"
+    "test:pass4": "node test/pass4.test.js",
+    "test:pass5": "node test/pass5.test.js"
   },
   "type": "commonjs",
   "version": "0.1.0"

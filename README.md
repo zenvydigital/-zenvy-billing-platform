@@ -5,25 +5,44 @@ ABA therapy billing for US clinics. Node.js + Express + Postgres, deployed on
 Muse fullstack artifact `zenvy-digitals-billing-platform` (which cannot be
 exported or made public). Same features, same Zenvy navy + gold branding.
 
-**Status: Pass 4 (final) + Pass 5 (Vercel adapter) — all features built + verified (pass2 63 + pass3 70 + pass4 63 checks pass).** Auth,
+**Status: Pass 5 — public trial signup + pro auth screens + clinic-scoped access built + verified (pass2 66 + pass3 70 + pass4 63 + pass5 44 = 243 checks pass).** Auth,
 clinics + flags, patients/referrals + BAA gate, verifications, authorizations
 + expiry scan, sessions → draft claims, claims + scrubber + submit gate,
 clearinghouse submit (simulation), denials, payer calls (opt-in enforced),
 ERA import/match/post, AR aging + reports + dashboard, audit log, CSV
 import/export, demo data loader, full app UI — plus: Paddle subscriptions
-($500/mo, 14-day trial, lifecycle + webhook), email alert digests (Resend,
+($500/mo, 7-day trial, lifecycle + webhook), email alert digests (Resend,
 delivery recorded honestly), 5 automation rules + daily sweep, Costs & Model
-(Zenvy owner only) — plus now: Integrations page (7 vendors, live mode refused
+(Zenvy owner only) — plus: Integrations page (7 vendors, live mode refused
 honestly), denial-risk score 0–100 with named factors, auto-appeal drafts
 (Aetna CO-97 + generic), Sara dialer bridge (queue CSV export + call-result
-import), Clinic Portal (own clinic only), audit-log DB trigger — see [PLAN.md](PLAN.md)
-for the build order and the verification log. Deploy-ready, pending only
-Rza's steps: Supabase SQL Editor migrations, Vercel import + env vars.
+import), Clinic Portal (own clinic only), audit-log DB trigger — plus now:
+public 7-day trial signup (no login) at `https://app.zenvydigitals.online/#trial`,
+clinic-scoped owner accounts, split-screen auth with product showcase,
+dashboard Quick-Start checklist + trial banner — see [PLAN.md](PLAN.md)
+for the build order and the verification log. Live on Vercel at
+**app.zenvydigitals.online** (Hobby); pending only Rza's steps: Supabase
+SQL Editor migrations (001–006), Vercel env vars, daily-sweep cron.
 (Render is BLOCKED — Rza's account is asked for a card at service creation;
 Koyeb free tier is dead since Feb 2026 and Zeabur's free hosted tier is gone.
 See DEPLOY.md.)
 
-## Daily sweep (Pass 3)
+## Public trial signup (Pass 5)
+
+A clinic with no account signs up from the website's Subscribe button:
+
+**Trial signup URL: https://app.zenvydigitals.online/#trial**
+
+`POST /api/public/start-trial` (no login) takes clinic name, your name, work
+email, password (min 8 chars) and creates the clinic (status `trial`,
+trial_ends_at = today + 7 days, $500/month plan) + a clinic-scoped owner
+account (role `clinic`), then signs them in and lands them on the dashboard
+with the Quick-Start checklist and a one-click sample-data loader. One trial
+per email; max 5 signup attempts/hour per IP. The hard BAA gate still blocks
+real patient entry until the clinic records its BAA. Trial owners see and
+manage only their own clinic — never other clinics, Costs & Model, or
+platform administration. The logged-out screen is a split screen: product
+showcase on the left, sign-in on the right.
 
 Neither Render free nor Vercel runs the sweep natively, so the daily sweep is an HTTP endpoint:
 `POST /api/internal/run-daily` with header `x-cron-secret: <CRON_SECRET>`.

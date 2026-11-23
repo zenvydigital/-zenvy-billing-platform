@@ -92,25 +92,35 @@ function pillFor(status) {
 
 function isOwner() { return state.user && state.user.role === 'owner'; }
 function isZenvyOwner() { return state.user && state.user.role === 'owner' && state.user.clinic_id === null; }
+/** Owns a clinic: platform owner, clinic-scoped owner, or trial clinic owner. */
+function isClinicOwner() { return state.user && (state.user.role === 'owner' || state.user.role === 'clinic'); }
 function canWrite() { return state.user && state.user.role !== 'viewer'; }
 
 // ------------------------------------------------------------------ auth
 
 async function boot() {
   try {
-    const s = await get('/api/auth/status');
-    if (!s.usersExist) return showSetup();
+    // A signed-in user landing on #trial goes straight to the app.
     try {
       const me = await get('/api/auth/me');
       state.user = me.user;
+      if (location.hash === '#trial') history.replaceState(null, '', location.pathname);
       return showApp();
-    } catch {
-      return showLogin();
-    }
+    } catch { /* not signed in — fall through to the public views */ }
+    if (location.hash === '#trial') return showTrial();
+    const s = await get('/api/auth/status');
+    if (!s.usersExist) return showSetup();
+    return showLogin();
   } catch (e) {
     $('#authView').innerHTML = `<div class="card"><h2>Server not reachable</h2><p>${esc(e.message)}</p></div>`;
   }
 }
+
+window.addEventListener('hashchange', () => {
+  if (state.user) return; // signed in — the app owns the screen
+  if (location.hash === '#trial') showTrial();
+  else showLogin();
+});
 
 function showSetup() {
   $('#authView').innerHTML = `
@@ -130,15 +140,64 @@ function showSetup() {
 
 function showLogin() {
   $('#authView').innerHTML = `
-    <div class="card">
-      <h2>Sign in</h2>
-      <p>Use the email and password your clinic owner gave you.</p>
-      <form class="grid" data-form="login">
-        <label>Email<input name="email" type="email" required></label>
-        <label>Password<input name="password" type="password" required></label>
-        <span></span>
-        <button class="btn" type="submit">Sign in</button>
-      </form>
+    <div class="auth-split">
+      <div class="card showcase">
+        <span class="pill ok">ABA clinics only</span>
+        <h2>Billing that pays for itself.</h2>
+        <p>Zenvy Billing Platform tracks authorizations before they expire, scrubs every claim before it goes out, and chases denials oldest-first — so the money your clinic already earned actually arrives.</p>
+        <ul class="showcase-list">
+          <li><strong>$500/month</strong> per clinic — month-to-month, cancel any time</li>
+          <li><strong>7-day free trial</strong> — no card required</li>
+          <li>Authorizations with 30 / 14 / 7-day expiry alerts</li>
+          <li>Automatic claim scrubbing — a failed scrub blocks the submit</li>
+          <li>Denials &amp; appeals with deadlines, AR follow-up oldest-first</li>
+          <li>Payer calls by Sara — opt-in only, off by default</li>
+        </ul>
+        <p class="muted">Built by a billing company, not a software company. Your data is yours — export it any time.</p>
+        <div class="btnrow"><a class="btn" href="#trial">Start free trial</a></div>
+      </div>
+      <div class="card">
+        <h2>Sign in</h2>
+        <p>Clinic owners sign in with the account they created at signup. Staff use the email and password their clinic owner gave them.</p>
+        <form class="grid" data-form="login">
+          <label>Email<input name="email" type="email" required></label>
+          <label>Password<input name="password" type="password" required></label>
+          <span></span>
+          <button class="btn" type="submit">Sign in</button>
+        </form>
+        <p class="muted">No account yet? <a href="#trial">Start your 7-day free trial</a> — $500/month after that, cancel any time.</p>
+      </div>
+    </div>`;
+}
+
+/** Public trial signup — no login required. Linked from the website's Subscribe button. */
+function showTrial() {
+  $('#authView').innerHTML = `
+    <div class="auth-split">
+      <div class="card showcase">
+        <span class="pill ok">7-day free trial — no card</span>
+        <h2>Try the whole platform free for 7 days.</h2>
+        <p>Your own clinic workspace, from the first minute: add patients (initials only), track authorizations, create claims, watch the scrubber catch mistakes before a payer does.</p>
+        <ul class="showcase-list">
+          <li><strong>$500/month</strong> per clinic after the trial — month-to-month</li>
+          <li>Load sample data with one click to see it working, then remove it</li>
+          <li>Real patient data stays blocked until your BAA is signed</li>
+          <li>Free onboarding and data-import help from the Zenvy team</li>
+        </ul>
+        <p class="muted">One trial per email. Questions? billing@zenvydigitals.online</p>
+      </div>
+      <div class="card">
+        <h2>Start your free trial</h2>
+        <p>Your clinic is ready the moment you submit — no waiting, no sales call.</p>
+        <form class="grid" data-form="trial">
+          <label>Clinic name<input name="clinicName" required placeholder="e.g. Bright Steps ABA"></label>
+          <label>Your name<input name="name" required></label>
+          <label>Work email<input name="email" type="email" required></label>
+          <label>Password (8+ characters)<input name="password" type="password" minlength="8" required></label>
+          <button class="btn" type="submit">Start 7-day free trial</button>
+        </form>
+        <p class="muted">Already have an account? <a href="#" data-action="goto-login">Sign in</a></p>
+      </div>
     </div>`;
 }
 
@@ -163,7 +222,7 @@ async function showApp() {
 function visibleTabs() {
   return TABS.filter(([k]) => {
     if (k === 'automation' || k === 'costs') return isZenvyOwner();
-    if (k === 'subscribe') return isOwner();
+    if (k === 'subscribe') return isClinicOwner();
     if (k === 'portal') return state.user.clinic_id !== null;
     return true;
   });
@@ -239,7 +298,38 @@ async function renderDashboard() {
   ]);
   const d = dash.dashboard;
   const c = clinic();
+  const trialDaysLeft = c.subscription_status === 'trial' && c.trial_ends_at
+    ? Math.max(0, Math.round((new Date(c.trial_ends_at + 'T00:00:00Z').getTime() - new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z').getTime()) / 86400000))
+    : null;
+  const steps = [
+    { label: 'Sign the BAA — real patient data stays blocked until then', done: !!c.baa_signed },
+    { label: 'Add your first patient (initials only)', done: d.activePatients > 0 },
+    { label: 'Add an authorization with its units', done: d.totalAuths > 0 },
+    { label: 'Create your first claim — the scrubber checks it before submit', done: d.totalClaims > 0 },
+    { label: 'See money recovered on this dashboard', done: d.recoveredThisMonth > 0 },
+  ];
+  const showChecklist = c.subscription_status === 'trial' || steps.some((s) => !s.done);
   return `
+  ${trialDaysLeft !== null ? `
+  <div class="card">
+    <h2>Your free trial — ${trialDaysLeft} day${trialDaysLeft === 1 ? '' : 's'} left <span class="pill warn">trial ends ${esc(c.trial_ends_at)}</span></h2>
+    <p>Everything below is live for your clinic. When the trial ends, activate for $500/month — month-to-month, cancel any time.</p>
+    <div class="btnrow"><button class="btn" data-action="goto-subscribe">Activate — $500/month</button></div>
+  </div>` : ''}
+  ${showChecklist ? `
+  <div class="card">
+    <h2>Quick-Start checklist</h2>
+    <p>Five steps from an empty clinic to money recovered. ${d.hasSampleData ? 'Sample data is loaded — it is marked SAMPLE everywhere and never mixes with real patients.' : 'Not sure where to start? Load sample data below and click around first.'}</p>
+    <ul class="showcase-list">
+      ${steps.map((s) => `<li>${s.done ? '<strong>✓</strong>' : '<strong>○</strong>'} ${esc(s.label)}</li>`).join('')}
+    </ul>
+    ${isClinicOwner() ? `<div class="btnrow">
+      ${d.hasSampleData
+        ? `<button class="btn danger" data-action="demo-remove-own">Remove sample data</button>`
+        : `<button class="btn ghost" data-action="demo-load-own">Load sample data</button>`}
+      ${!c.baa_signed ? `<button class="btn ghost" data-action="goto-settings">Record the BAA in Settings</button>` : ''}
+    </div>` : ''}
+  </div>` : ''}
   <div class="card">
     <h2>${esc(c.name)} ${c.is_demo ? '<span class="pill">SAMPLE DATA</span>' : ''}</h2>
     <p>${esc(c.city || '')} ${esc(c.state || '')} · BAA: ${c.baa_signed ? 'signed' : '<strong>not signed</strong>'} · Payer calls: ${c.payer_calls_opt_in ? 'opted in' : 'off'} · Alerts: ${c.alerts_enabled ? 'on' : 'off'}</p>
@@ -544,7 +634,7 @@ async function renderCalls() {
   <div class="card">
     <h2>Payer calls ${c.payer_calls_opt_in ? '<span class="pill ok">Opted in</span>' : '<span class="pill bad">Opted out</span>'}</h2>
     <p>Payer calls only happen for clinics that opt in. Each queued claim carries the exact question to ask. <span class="pill sim">Simulation mode — no live Twilio call is placed yet.</span></p>
-    ${isOwner() ? `<div class="btnrow"><button class="btn ghost" data-action="toggle-optin">${c.payer_calls_opt_in ? 'Turn payer calls OFF' : 'Turn payer calls ON (opt in)'}</button></div>` : ''}
+    ${isClinicOwner() ? `<div class="btnrow"><button class="btn ghost" data-action="toggle-optin">${c.payer_calls_opt_in ? 'Turn payer calls OFF' : 'Turn payer calls ON (opt in)'}</button></div>` : ''}
     <h3>Sara dialer bridge</h3>
     <p>Export the queue as a CSV for Sara’s dialer, then import the call results file back — outcomes land on the claims automatically.</p>
     <div class="btnrow">
@@ -701,12 +791,12 @@ async function renderAudit() {
 
 async function renderSettings() {
   const c = clinic();
-  const users = isOwner() ? (await get(`/api/clinics/${cid()}/users`)).users : [];
-  const digests = isOwner() ? (await get(`/api/clinics/${cid()}/alert-digests?limit=10`)).digests : [];
+  const users = isClinicOwner() ? (await get(`/api/clinics/${cid()}/users`)).users : [];
+  const digests = isClinicOwner() ? (await get(`/api/clinics/${cid()}/alert-digests?limit=10`)).digests : [];
   return `
   <div class="card">
     <h2>Clinic settings</h2>
-    ${isOwner() ? `
+    ${isClinicOwner() ? `
     <form class="grid" data-form="clinic-flags">
       <label class="check"><input type="checkbox" name="baa_signed" ${c.baa_signed ? 'checked' : ''}> BAA signed (allows real patient data)</label>
       <label class="check"><input type="checkbox" name="payer_calls_opt_in" ${c.payer_calls_opt_in ? 'checked' : ''}> Payer calls opted in (Sara / team may call payers)</label>
@@ -719,13 +809,13 @@ async function renderSettings() {
       <button class="btn" type="submit">Save settings</button>
     </form>` : '<p>Only the clinic owner can change these settings.</p>'}
   </div>
-  ${isOwner() ? `
+  ${isClinicOwner() ? `
   <div class="card">
     <h2>Subscription</h2>
     <p>Status: <strong>${esc(c.subscription_status)}</strong> · Plan: ${esc(c.subscription_plan)} · Trial ends: ${esc(c.trial_ends_at || '—')}</p>
     <div class="btnrow"><button class="btn ghost" data-action="goto-subscribe">Manage subscription</button></div>
   </div>` : ''}
-  ${isOwner() ? `
+  ${isClinicOwner() ? `
   <div class="card">
     <h2>Email alert digests</h2>
     <p>One digest per day, when there is something to report. Delivery is recorded honestly — “sent” only after the email is accepted, “failed” with the reason otherwise. ${c.alerts_enabled ? '' : '<strong>Alerts are currently off for this clinic.</strong>'}</p>
@@ -736,7 +826,7 @@ async function renderSettings() {
       <td class="muted">${esc(d.error || (d.sent_at ? 'sent ' + d.sent_at.slice(0, 19).replace('T', ' ') : 'queued'))}</td>
     </tr>`).join('') || '<tr><td colspan="4">No digests yet.</td></tr>'}</tbody></table>
   </div>` : ''}
-  ${isOwner() ? `
+  ${isClinicOwner() ? `
   <div class="card">
     <h2>Clinic users</h2>
     <table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead>
@@ -746,7 +836,7 @@ async function renderSettings() {
       <label>Name<input name="name" required></label>
       <label>Email<input name="email" type="email" required></label>
       <label>Password (8+)<input name="password" type="password" minlength="8" required></label>
-      <label>Role<select name="role"><option>biller</option><option>viewer</option><option>owner</option></select></label>
+      <label>Role<select name="role"><option>biller</option><option>viewer</option><option>clinic</option><option>owner</option></select></label>
       <button class="btn" type="submit">Add user</button>
     </form>
   </div>` : ''}
@@ -780,7 +870,7 @@ async function renderSubscribe() {
   const statusPill = { none: '', trial: 'warn', active: 'ok', paused: 'warn', cancelled: 'bad' }[s.status] || '';
   const actions = [];
   if (s.status === 'none' || s.status === 'cancelled') {
-    actions.push(`<button class="btn" data-action="sub-trial">Start 14-day free trial (no card)</button>`);
+    actions.push(`<button class="btn" data-action="sub-trial">Start 7-day free trial (no card)</button>`);
     actions.push(`<button class="btn ghost" data-action="sub-activate">Subscribe now — $500/month</button>`);
   }
   if (s.status === 'trial') {
@@ -817,7 +907,7 @@ async function renderSubscribe() {
     <p>One $240 paid claim covers almost half a month. Most clinics recover the $500 from a single overturned denial — if it does not recover more than it costs, you walk away. That is the deal.</p>
     <h3>Honest answers</h3>
     <ul>
-      <li><strong>Trial:</strong> 14 days, no card. Try it with the demo data first.</li>
+      <li><strong>Trial:</strong> 7 days, no card. Try it with sample data first.</li>
       <li><strong>Contract:</strong> none — month-to-month, cancel any time.</li>
       <li><strong>Your data:</strong> export it any time (CSV). We never hold it hostage.</li>
       <li><strong>Real patient data:</strong> only after your BAA is signed — the platform blocks it before then.</li>
@@ -1029,6 +1119,13 @@ document.addEventListener('submit', async (e) => {
       toast('Signed in.');
       return showApp();
     }
+    if (kind === 'trial') {
+      const r = await post('/api/public/start-trial', data);
+      state.user = r.user;
+      history.replaceState(null, '', location.pathname);
+      toast(`Trial started — your clinic is ready. Free until ${r.trialEndsAt}.`);
+      return showApp();
+    }
     if (kind === 'add-patient') {
       await post(`/api/clinics/${cid()}/patients`, data);
       toast('Patient added.');
@@ -1230,6 +1327,19 @@ document.addEventListener('click', async (e) => {
     } else if (action === 'goto-subscribe') {
       state.tab = 'subscribe';
       renderTab();
+    } else if (action === 'goto-settings') {
+      state.tab = 'settings';
+      renderTab();
+    } else if (action === 'goto-login') {
+      history.replaceState(null, '', location.pathname);
+      showLogin();
+    } else if (action === 'demo-load-own') {
+      await post(`/api/clinics/${cid()}/demo/load`, {});
+      toast('Sample data loaded — look around, it is all marked SAMPLE.');
+    } else if (action === 'demo-remove-own') {
+      if (!confirm('Remove all sample data from this clinic? Your real data stays.')) return;
+      await post(`/api/clinics/${cid()}/demo/remove`, {});
+      toast('Sample data removed.');
     } else if (action === 'sub-trial') {
       const r = await post(`/api/clinics/${cid()}/subscription/trial`, {});
       toast(`Trial started — ends ${r.subscription.trialEndsAt}. No card required.`);
@@ -1325,6 +1435,7 @@ $('#logoutBtn').addEventListener('click', async () => {
   state.user = null;
   state.clinics = [];
   state.clinicId = null;
+  history.replaceState(null, '', location.pathname);
   $('#appView').classList.add('hidden');
   $('#whoBox').classList.add('hidden');
   $('#logoutBtn').classList.add('hidden');

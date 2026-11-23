@@ -21,7 +21,7 @@
 const express = require('express');
 const { query, getPool } = require('../db');
 const { ApiError, isoDate } = require('../util');
-const { requireAuth, requireOwner } = require('../middleware');
+const { requireAuth, requireOwner, requireClinicOwner, loadClinic } = require('../middleware');
 const { audit } = require('../audit');
 
 const router = express.Router();
@@ -187,4 +187,162 @@ router.post('/remove', async (req, res, next) => {
   }
 });
 
+// ------------------------------------------------- clinic-scoped sample data
+//
+// Pass 5: a trial clinic owner loads sample data into THEIR OWN clinic
+// (the platform demo loader above is Zenvy-owner-only and creates a
+// separate demo clinic the trial user must never see). Same sample set —
+// 3 patients (initials only), 2 authorizations, 3 verifications,
+// 2 sessions, 4 claims, 1 open denial — all marked is_demo, so the
+// clinic's real data is never mixed with it. The clinic's BAA flag is
+// NOT touched: sample data is not real patient data, and the hard BAA
+// gate still blocks real patient entry until the BAA is recorded.
+// Remove deletes ONLY the sample rows inside this clinic.
+
+const clinicDemo = express.Router({ mergeParams: true });
+clinicDemo.use(requireAuth, loadClinic, requireClinicOwner);
+
+clinicDemo.post('/load', async (req, res, next) => {
+  try {
+    const cid = req.clinic.id;
+    const existing = await query(
+      'SELECT id FROM patients WHERE clinic_id = $1 AND is_demo = TRUE LIMIT 1',
+      [cid]
+    );
+    if (existing.rows.length > 0) {
+      throw new ApiError(409, 'Sample data is already loaded in this clinic. Remove it first if you want to reload it.');
+    }
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const q = (t, p) => client.query(t, p);
+
+      const mkPatient = async (initials, payer, memberId) => (await q(
+        `INSERT INTO patients (clinic_id, initials, payer, member_id, is_demo) VALUES ($1, $2, $3, $4, TRUE) RETURNING *`,
+        [cid, initials, payer, memberId]
+      )).rows[0];
+      const lm = await mkPatient('L.M.', 'BCBS', 'M-1001');
+      const tk = await mkPatient('T.K.', 'Aetna', 'M-1002');
+      const ab = await mkPatient('A.B.', 'UHC', 'M-1003');
+
+      await q(`INSERT INTO verifications (clinic_id, patient_id, payer, status) VALUES ($1, $2, 'BCBS', 'eligible')`, [cid, lm.id]);
+      await q(`INSERT INTO verifications (clinic_id, patient_id, payer, status) VALUES ($1, $2, 'Aetna', 'pending')`, [cid, tk.id]);
+      await q(`INSERT INTO verifications (clinic_id, patient_id, payer, status) VALUES ($1, $2, 'UHC', 'eligible')`, [cid, ab.id]);
+
+      const auth1 = (await q(
+        `INSERT INTO authorizations (clinic_id, patient_id, auth_number, payer, cpt_codes, total_units, units_used, start_date, end_date)
+         VALUES ($1, $2, 'AUTH-DEMO-1', 'BCBS', '97153', 40, 8, $3, $4) RETURNING *`,
+        [cid, lm.id, daysFromNow(-60), daysFromNow(9)]
+      )).rows[0];
+      const auth2 = (await q(
+        `INSERT INTO authorizations (clinic_id, patient_id, auth_number, payer, cpt_codes, total_units, units_used, start_date, end_date)
+         VALUES ($1, $2, 'AUTH-DEMO-2', 'Aetna', '97153,97155', 20, 18, $3, $4) RETURNING *`,
+        [cid, tk.id, daysFromNow(-30), daysFromNow(60)]
+      )).rows[0];
+
+      const s1 = (await q(
+        `INSERT INTO sessions (clinic_id, patient_id, authorization_id, session_date, cpt_code, units, duration_min, status)
+         VALUES ($1, $2, $3, $4, '97153', 4, 60, 'completed') RETURNING *`,
+        [cid, lm.id, auth1.id, daysFromNow(-3)]
+      )).rows[0];
+      const s2 = (await q(
+        `INSERT INTO sessions (clinic_id, patient_id, authorization_id, session_date, cpt_code, units, duration_min, status)
+         VALUES ($1, $2, $3, $4, '97153', 4, 60, 'completed') RETURNING *`,
+        [cid, tk.id, auth2.id, daysFromNow(-4)]
+      )).rows[0];
+
+      const c1 = (await q(
+        `INSERT INTO claims (clinic_id, patient_id, authorization_id, session_id, date_of_service, cpt_code, units, billed_amount, is_demo)
+         VALUES ($1, $2, $3, $4, $5, '97153', 4, 240, TRUE) RETURNING *`,
+        [cid, lm.id, auth1.id, s1.id, daysFromNow(-3)]
+      )).rows[0];
+      const c2 = (await q(
+        `INSERT INTO claims (clinic_id, patient_id, authorization_id, session_id, date_of_service, cpt_code, units, billed_amount, is_demo)
+         VALUES ($1, $2, $3, $4, $5, '97153', 8, 480, TRUE) RETURNING *`,
+        [cid, tk.id, auth2.id, s2.id, daysFromNow(-4)]
+      )).rows[0];
+      await q(
+        `INSERT INTO claims (clinic_id, patient_id, authorization_id, date_of_service, cpt_code, units, billed_amount, paid_amount, status, scrub_status, is_demo)
+         VALUES ($1, $2, $3, $4, '97153', 4, 240, 240, 'paid', 'passed', TRUE)`,
+        [cid, lm.id, auth1.id, daysFromNow(-10)]
+      );
+      const c4 = (await q(
+        `INSERT INTO claims (clinic_id, patient_id, date_of_service, cpt_code, units, billed_amount, status, scrub_status, is_demo)
+         VALUES ($1, $2, $3, '97155', 2, 160, 'denied', 'passed', TRUE) RETURNING *`,
+        [cid, ab.id, daysFromNow(-13)]
+      )).rows[0];
+      await q(
+        `INSERT INTO denials (clinic_id, claim_id, patient_id, denial_code, reason, status, appeal_deadline)
+         VALUES ($1, $2, $3, 'CO-97', 'The benefit for this service is included in the payment for another service already adjudicated.', 'open', $4)`,
+        [cid, c4.id, ab.id, daysFromNow(10)]
+      );
+      await q("UPDATE sessions SET claim_id = $1, status = 'billed' WHERE id = $2", [c1.id, s1.id]);
+      await q("UPDATE sessions SET claim_id = $1, status = 'billed' WHERE id = $2", [c2.id, s2.id]);
+
+      await client.query('COMMIT');
+      await audit(query, { actor: req.user, clinicId: cid, entity: 'demo', entityId: cid, action: 'load', detail: { clinic: req.clinic.name, scope: 'own-clinic' } });
+      res.status(201).json({
+        ok: true,
+        demo: {
+          clinicId: cid,
+          name: req.clinic.name,
+          note: 'Sample data only — no real patients. Remove it any time from the dashboard checklist.',
+        },
+      });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+clinicDemo.post('/remove', async (req, res, next) => {
+  try {
+    const cid = req.clinic.id;
+    const pool = getPool();
+    const client = await pool.connect();
+    let removed = { patients: 0, claims: 0 };
+    try {
+      await client.query('BEGIN');
+      const q = (t, p) => client.query(t, p);
+      // Demo rows are identified through the sample patients (verifications
+      // and authorizations carry no is_demo flag) and the sample claims.
+      const demoPatients = `(SELECT id FROM patients WHERE clinic_id = $1 AND is_demo = TRUE)`;
+      const demoClaims = `(SELECT id FROM claims WHERE clinic_id = $1 AND is_demo = TRUE)`;
+      await q(`DELETE FROM payer_calls WHERE clinic_id = $1 AND claim_id IN ${demoClaims}`, [cid]);
+      await q(`DELETE FROM appeal_drafts WHERE claim_id IN ${demoClaims}`, [cid]);
+      await q(`DELETE FROM denials WHERE clinic_id = $1 AND claim_id IN ${demoClaims}`, [cid]);
+      await q(`DELETE FROM payer_call_queue WHERE clinic_id = $1 AND claim_id IN ${demoClaims}`, [cid]);
+      const claimsDel = await q(
+        `DELETE FROM claims WHERE clinic_id = $1 AND (is_demo = TRUE OR session_id IN (SELECT id FROM sessions WHERE clinic_id = $1 AND patient_id IN ${demoPatients}))`,
+        [cid]
+      );
+      removed.claims = claimsDel.rowCount || 0;
+      await q(`DELETE FROM sessions WHERE clinic_id = $1 AND patient_id IN ${demoPatients}`, [cid]);
+      await q(`DELETE FROM verifications WHERE clinic_id = $1 AND patient_id IN ${demoPatients}`, [cid]);
+      await q(`DELETE FROM authorizations WHERE clinic_id = $1 AND patient_id IN ${demoPatients}`, [cid]);
+      await q(`DELETE FROM referrals WHERE clinic_id = $1 AND is_demo = TRUE`, [cid]);
+      const patientsDel = await q(`DELETE FROM patients WHERE clinic_id = $1 AND is_demo = TRUE`, [cid]);
+      removed.patients = patientsDel.rowCount || 0;
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+    await audit(query, { actor: req.user, clinicId: cid, entity: 'demo', entityId: cid, action: 'remove', detail: { scope: 'own-clinic', ...removed } });
+    res.json({ ok: true, removed });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
+module.exports.router = router;
+module.exports.clinicDemo = clinicDemo;

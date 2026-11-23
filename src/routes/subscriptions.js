@@ -1,10 +1,10 @@
 'use strict';
 
 /**
- * Subscriptions (Pass 3): $500/month per clinic, 14-day free trial, no card.
+ * Subscriptions (Pass 3, trial corrected to 7 days in Pass 5 — owner order 2026-11-24): $500/month per clinic, 7-day free trial, no card.
  *
  * Lifecycle per clinic (all owner-only, all recorded in the audit log):
- *   none → trial (14 days) → active → paused → active (resume)
+ *   none → trial (7 days) → active → paused → active (resume)
  *   any of trial / active / paused → cancelled (month-to-month, cancel anytime)
  *   cancelled → trial / active again (re-subscribe)
  *
@@ -18,7 +18,7 @@
 const express = require('express');
 const { query } = require('../db');
 const { ApiError, cleanRow, isoDate } = require('../util');
-const { requireAuth, requireWrite, requireOwner, loadClinic } = require('../middleware');
+const { requireAuth, requireWrite, requireClinicOwner, loadClinic } = require('../middleware');
 const { audit } = require('../audit');
 const { paddleMode, paddleConfigured } = require('../paddle');
 
@@ -26,7 +26,7 @@ const router = express.Router({ mergeParams: true });
 router.use(requireAuth, loadClinic);
 
 const PRICE_MONTHLY = 500;
-const TRIAL_DAYS = 14;
+const TRIAL_DAYS = 7;
 
 function todayPlus(days) {
   return new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
@@ -74,8 +74,8 @@ router.get('/', (req, res) => {
   res.json({ ok: true, subscription: subView(req.clinic) });
 });
 
-/** Start the 14-day free trial (no card). */
-router.post('/trial', requireOwner, async (req, res, next) => {
+/** Start the 7-day free trial (no card). */
+router.post('/trial', requireClinicOwner, async (req, res, next) => {
   try {
     const c = req.clinic;
     if (c.subscription_status === 'trial') {
@@ -92,14 +92,14 @@ router.post('/trial', requireOwner, async (req, res, next) => {
       action: 'trial-start',
       detail: { trialDays: TRIAL_DAYS, priceMonthly: PRICE_MONTHLY },
     });
-    res.status(201).json({ ok: true, subscription: subView(updated), note: '14-day free trial started — no card required.' });
+    res.status(201).json({ ok: true, subscription: subView(updated), note: '7-day free trial started — no card required.' });
   } catch (err) {
     next(err);
   }
 });
 
 /** Activate the $500/month subscription (after trial, or re-subscribe). */
-router.post('/activate', requireOwner, async (req, res, next) => {
+router.post('/activate', requireClinicOwner, async (req, res, next) => {
   try {
     const c = req.clinic;
     if (c.subscription_status === 'active') {
@@ -117,7 +117,7 @@ router.post('/activate', requireOwner, async (req, res, next) => {
 });
 
 /** Pause billing (trial or active). Access returns on resume. */
-router.post('/pause', requireOwner, async (req, res, next) => {
+router.post('/pause', requireClinicOwner, async (req, res, next) => {
   try {
     const c = req.clinic;
     if (!['trial', 'active'].includes(c.subscription_status)) {
@@ -131,7 +131,7 @@ router.post('/pause', requireOwner, async (req, res, next) => {
 });
 
 /** Resume a paused subscription (back to trial if the trial had not ended). */
-router.post('/resume', requireOwner, async (req, res, next) => {
+router.post('/resume', requireClinicOwner, async (req, res, next) => {
   try {
     const c = req.clinic;
     if (c.subscription_status !== 'paused') {
@@ -149,7 +149,7 @@ router.post('/resume', requireOwner, async (req, res, next) => {
 });
 
 /** Cancel (month-to-month, cancel anytime). */
-router.post('/cancel', requireOwner, async (req, res, next) => {
+router.post('/cancel', requireClinicOwner, async (req, res, next) => {
   try {
     const c = req.clinic;
     if (c.subscription_status === 'cancelled') {

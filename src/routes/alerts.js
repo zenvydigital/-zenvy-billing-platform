@@ -15,7 +15,7 @@
 const express = require('express');
 const { query } = require('../db');
 const { ApiError, cleanRow, asJson, isoDate } = require('../util');
-const { requireAuth, requireOwner, loadClinic } = require('../middleware');
+const { requireAuth, requireClinicOwner, loadClinic } = require('../middleware');
 const { audit } = require('../audit');
 const { queueAndSendDigest } = require('../digest');
 
@@ -49,7 +49,7 @@ router.get('/alert-digests', async (req, res, next) => {
   }
 });
 
-router.post('/alerts/send-digest', requireOwner, async (req, res, next) => {
+router.post('/alerts/send-digest', requireClinicOwner, async (req, res, next) => {
   try {
     const c = req.clinic;
     if (!c.alerts_enabled) {

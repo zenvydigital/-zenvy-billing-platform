@@ -77,7 +77,7 @@ async function main() {
 
   // --- bootstrap ------------------------------------------------------
   let r = await req('GET', '/health');
-  check('health answers, db up, version pass4', r.status === 200 && r.json.ok && r.json.db === 'up' && r.json.version === '0.4.0-pass4');
+  check('health answers, db up, version pass5', r.status === 200 && r.json.ok && r.json.db === 'up' && r.json.version === '0.5.0-pass5');
 
   r = await req('POST', '/api/auth/register', { name: 'Zenvy Owner', email: 'owner@zenvydigitals.online', password: 'password123' });
   check('bootstrap owner created', r.status === 201);

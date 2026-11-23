@@ -26,6 +26,9 @@
  *   /api/internal/run-daily — daily sweep for the external scheduler (Pass 3)
  *   /api/zenvy/costs — Costs & Model, Zenvy owner only (Pass 3)
  *   /api/demo     — demo data loader + one-click remove (owner only)
+ *   /api/clinics/:clinicId/demo — sample data inside a trial clinic
+ *     (Pass 5: clinic owner loads/removes sample data in their OWN clinic)
+ *   /api/public   — public 7-day trial signup, no login (Pass 5)
  *   /api/integrations — vendor connections + setConnectionMode (Pass 4)
  *   /api/clinics/:clinicId/edi/batches + /claims/:id/status-check (Pass 4)
  *   /api/clinics/:clinicId/appeal-drafts — auto-appeal drafts (Pass 4)
@@ -56,14 +59,16 @@ app.get('/health', async (req, res) => {
   res.json({
     ok: db !== 'down',
     service: 'zenvy-billing-platform',
-    version: '0.4.0-pass4',
+    version: '0.5.0-pass5',
     db,
     time: new Date().toISOString(),
   });
 });
 
 app.use('/api/auth', require('./routes/auth'));
-app.use('/api/demo', require('./routes/demo'));
+app.use('/api/public', require('./routes/public'));
+app.use('/api/demo', require('./routes/demo').router);
+app.use('/api/clinics/:clinicId/demo', require('./routes/demo').clinicDemo);
 app.use('/api/automation', require('./routes/automation'));
 app.use('/api/internal', require('./routes/internal'));
 app.use('/api/zenvy', require('./routes/zenvy'));

@@ -20,7 +20,7 @@ router.use(requireAuth);
 
 const COSTS = {
   priceMonthly: 500,
-  trialDays: 14,
+  trialDays: 7,
   monthlyCosts: [
     { item: 'Server — Render free tier now (DigitalOcean $20–50/mo later)', cost: '$0 now' },
     { item: 'Database — Supabase Free (500 MB, no expiry)', cost: '$0' },

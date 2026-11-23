@@ -20,8 +20,12 @@ App is deploy-ready (Pass 4 + Vercel adapter, 199 checks pass). Deploy needs onl
 2. Open `db/all-migrations.sql` from the repo (GitHub → `db/all-migrations.sql` → Raw → copy all),
    paste the whole file into the SQL Editor → **Run**.
    It creates all 18 tables, seeds the 5 automation rules + 7 vendor connections,
-   adds the Paddle columns, installs the audit-log trigger, and records all 5
-   files in `schema_migrations`. Re-running it on real Postgres is safe.
+   adds the Paddle columns, installs the audit-log trigger, widens the user/audit
+   role checks for the 'clinic' role (Pass 5 — public trial signup), and records
+   all 6 files in `schema_migrations`. Re-running it on real Postgres is safe.
+   **If the live DB was already migrated with 001–005, run the updated file again
+   (or just the 006 block) — without 006, public trial signup fails on live
+   Postgres with a role-check error.**
 3. **Verify the audit-log trigger on live Postgres** (never executed anywhere yet —
    pg-mem cannot run plpgsql; no Postgres on the build VM):
    in the SQL Editor run:
@@ -101,7 +105,12 @@ designed (`POST /api/internal/run-daily`, header `x-cron-secret: <CRON_SECRET>`)
 4. Scrubber: problem claim fails → fix → passes → submit accepted.
 5. Audit trigger check (A1.3) re-confirmed on live data.
 6. Demo data load → dashboard shows recovered money → remove demo data.
-7. Paddle: only after Rza's Paddle account is verified + domain `app.zenvydigitals.online`
+7. **Public trial signup (Pass 5):** open `https://app.zenvydigitals.online/#trial`
+   in a fresh browser (logged out) — the trial form must appear, not a bare login.
+   Sign up with a test email → clinic created on a 7-day trial, signed in, dashboard
+   shows the Quick-Start checklist. One trial per email — a second signup with the
+   same email must be refused with a clear message.
+8. Paddle: only after Rza's Paddle account is verified + domain `app.zenvydigitals.online`
    approved in Paddle → Website approval → set keys in Vercel env → test Subscribe flow
    in sandbox first, then live.
 
@@ -147,7 +156,7 @@ designed (`POST /api/internal/run-daily`, header `x-cron-secret: <CRON_SECRET>`)
    service address (`*.onrender.com`); Render provisions free SSL.
 
 ## 6. Website software section (zenvydigitals.online)
-Add at deploy time: Service $3,500/mo (done-for-you) vs Software $500/mo (14-day free
+Add at deploy time: Service $3,500/mo (done-for-you) vs Software $500/mo (7-day free
 trial) with the Subscribe button linking to `https://app.zenvydigitals.online`.
 
 ## 7. After deploy is live + tested

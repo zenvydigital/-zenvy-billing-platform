@@ -2,10 +2,11 @@
 -- all-migrations.sql — Zenvy Digitals Billing Platform (Vercel deploy).
 -- Run ONCE in the Supabase dashboard: SQL Editor -> paste this whole file
 -- -> Run. It creates all 18 tables, seeds the 5 automation rules + 7 vendor
--- connections, adds the Paddle columns, and installs the audit-log trigger.
+-- connections, adds the Paddle columns, installs the audit-log trigger,
+-- and widens the user/audit role checks for the 'clinic' role (Pass 5).
 --
 -- SOURCE: verbatim concatenation of db/migrations/001_core.sql ..
--- 005_pass4.sql, in order, with exactly TWO adjustments so this file is
+-- 006_pass5.sql, in order, with exactly TWO adjustments so this file is
 -- safe to re-run (the original migration files are UNCHANGED):
 --   (1) 002_billing.sql's two ALTER TABLE ... ADD CONSTRAINT statements are
 --       wrapped in guarded DO blocks (a plain ADD CONSTRAINT errors if the
@@ -13,7 +14,7 @@
 --   (2) 004_pass3.sql's two ADD COLUMN statements use IF NOT EXISTS.
 -- Everything else (CREATE TABLE/INDEX IF NOT EXISTS, INSERT ... ON CONFLICT
 -- DO NOTHING, CREATE OR REPLACE FUNCTION, DROP TRIGGER IF EXISTS) was
--- already idempotent. The footer records all 5 files in schema_migrations,
+-- already idempotent. The footer records all 6 files in schema_migrations,
 -- so a later `npm run migrate` (Render/local) skips them as already applied.
 --
 -- After running: verify with the two checks in DEPLOY.md (audit trigger
@@ -454,8 +455,35 @@ CREATE TRIGGER audit_log_no_truncate
   BEFORE TRUNCATE ON audit_log
   FOR EACH STATEMENT EXECUTE FUNCTION forbid_audit_log_change();
 
+-- ==================== 006_pass5.sql ====================
+-- 006_pass5.sql — clinic-scoped owner role ('clinic') for public trial signup.
+-- Pass 5 adds a public 7-day free trial: a clinic signs up from the
+-- website's Subscribe button, and the server creates their clinic plus a
+-- clinic-scoped owner account (role 'clinic', clinic_id = their clinic).
+-- The users.clinic_id column already exists (001_core.sql) — the ADD
+-- COLUMN below is a guarded no-op. The role CHECK is widened: the old
+-- constraint (owner/biller/viewer) would reject 'clinic' inserts with
+-- a 23514 error. Two DROP statements, because the two engines name the
+-- original inline CHECK differently: real Postgres calls it
+-- users_role_check (its <table>_<column>_check convention), while
+-- pg-mem (test only) calls it users_constraint_1. Each DROP is IF
+-- EXISTS, so on real Postgres the pg-mem name is a harmless no-op.
+-- The audit log records the actor's role too, so its actor_role CHECK
+-- gets the same widening (audit_log_actor_role_check on real Postgres,
+-- audit_log_constraint_1 in pg-mem).
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS clinic_id INTEGER REFERENCES clinics(id) ON DELETE SET NULL;
+
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_constraint_1;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('owner', 'biller', 'viewer', 'clinic'));
+
+ALTER TABLE audit_log DROP CONSTRAINT IF EXISTS audit_log_actor_role_check;
+ALTER TABLE audit_log DROP CONSTRAINT IF EXISTS audit_log_constraint_1;
+ALTER TABLE audit_log ADD CONSTRAINT audit_log_actor_role_check CHECK (actor_role IN ('owner', 'biller', 'viewer', 'clinic'));
+
 -- ==================== schema_migrations bookkeeping ====================
--- Records the 5 files as applied, so `npm run migrate` (Render/local)
+-- Records the 6 files as applied, so `npm run migrate` (Render/local)
 -- later skips them instead of re-applying.
 CREATE TABLE IF NOT EXISTS schema_migrations (
   filename TEXT PRIMARY KEY,
@@ -466,5 +494,6 @@ INSERT INTO schema_migrations (filename) VALUES
   ('002_billing.sql'),
   ('003_platform.sql'),
   ('004_pass3.sql'),
-  ('005_pass4.sql')
+  ('005_pass4.sql'),
+  ('006_pass5.sql')
 ON CONFLICT (filename) DO NOTHING;
